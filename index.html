@@ -331,6 +331,28 @@
   .card.show-ov .ov { -webkit-line-clamp: 10; }
   .card.show-ov .gradient { height: 75%; }
 
+  /* server-availability pill (top-right of card) */
+  .avail {
+    position: absolute; top: 14px; right: 14px; z-index: 2;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.3px;
+    padding: 5px 10px; border-radius: 99px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 4px 14px -4px #000;
+  }
+  .avail.on { background: #1f7a45e6; color: #d6ffe6; border: 1px solid #2ecc7155; }
+  .avail.dl { background: #15151acc; color: var(--cream-dim); border: 1px solid #ffffff26; }
+
+  /* match-screen server status + button states */
+  .server-status { font-size: 13.5px; margin: 12px 0 2px; font-weight: 600; }
+  .server-status.on { color: #4cd787; }
+  .server-status.dl { color: var(--cream-dim); }
+  .btn.btn-done { background: #1f7a45; box-shadow: none; opacity: 1; }
+
+  /* chooser-item availability tag */
+  .ci-avail { display: inline-block; margin-top: 5px; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+  .ci-avail.on { background: #1f7a4533; color: #4cd787; }
+  .ci-avail.dl { background: #ffffff14; color: var(--cream-dim); }
+
   /* swipe stamps */
   .card .stamp {
     position: absolute; top: 26px;
@@ -1057,6 +1079,7 @@ function buildCard(t, depth) {
         <div class="ft">${esc(t.title)}</div>
         <div class="fmeta">${badgeText(t)} · ${yearOf(t)}</div>
       </div>
+      ${availPill(t)}
       <div class="gradient"></div>
       <div class="info">
         <span class="badge">${badgeText(t)}</span>
@@ -1091,6 +1114,17 @@ function buildCard(t, depth) {
 }
 
 function badgeText(t) { return t.type === 'tv' ? 'Series' : 'Movie'; }
+
+/* server-availability pill (only shown when Radarr/Sonarr is wired up) */
+function availInfo(t) {
+  if (t.availability === 'downloaded') return { cls: 'on', label: '▶ On your server' };
+  if (t.availability === 'available' || t.availability === 'library') return { cls: 'dl', label: '＋ Can download' };
+  return null; // not configured → no pill
+}
+function availPill(t) {
+  const a = availInfo(t);
+  return a ? `<div class="avail ${a.cls}">${a.label}</div>` : '';
+}
 
 /* ---------------- Drag / swipe mechanics ---------------- */
 function attachDrag(card) {
@@ -1260,8 +1294,11 @@ function renderSingleMatch(t) {
           ${t.vote ? `<span class="star">★ ${t.vote}</span>` : ''}
         </div>
         <div class="synopsis">${esc(t.overview || 'No synopsis available.')}</div>
+        ${serverStatusHtml(t)}
         <div class="actions">
-          <a class="btn" id="trailer" target="_blank" rel="noopener">▶ Find the trailer</a>
+          ${t.availability && t.availability !== 'downloaded'
+            ? `<button class="btn" id="download">⬇ Download to server</button>` : ''}
+          <a class="btn ${t.availability && t.availability !== 'downloaded' ? 'btn-ghost' : ''}" id="trailer" target="_blank" rel="noopener">▶ Find the trailer</a>
           <button class="btn btn-ghost" id="again">${state.mode === 'duo' ? '🔁 Pick again' : 'Start over'}</button>
         </div>
       </div>
@@ -1270,7 +1307,40 @@ function renderSingleMatch(t) {
   app.appendChild(s);
   s.querySelector('#again').onclick = onAgain;
   wireTrailer(s.querySelector('#trailer'), t);
+  const dl = s.querySelector('#download');
+  if (dl) dl.onclick = function () { sendToServer(dl, t); };
   fireConfetti();
+}
+
+/* status line under the synopsis reflecting server availability */
+function serverStatusHtml(t) {
+  if (t.availability === 'downloaded') return `<div class="server-status on">▶ It’s on your server — ready to watch tonight.</div>`;
+  if (t.availability === 'library')    return `<div class="server-status dl">In your library but not downloaded yet.</div>`;
+  if (t.availability === 'available')  return `<div class="server-status dl">Not on your server yet — grab it below.</div>`;
+  return '';
+}
+
+/* POST a title to Radarr/Sonarr and reflect status on the button */
+async function sendToServer(btn, t) {
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = '⬇ Sending to your server…';
+  try {
+    const res = await fetch(API_BASE + '/api/download', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: t.type, tmdbId: t.tmdbId, title: t.title })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      btn.textContent = data.already ? '✓ Already in your library' : '✓ Queued — downloading now';
+      btn.classList.add('btn-done');
+    } else {
+      btn.textContent = '✗ ' + (data.error || 'Failed'); btn.disabled = false;
+    }
+  } catch (e) {
+    btn.textContent = '✗ Couldn’t reach the server'; btn.disabled = false;
+    setTimeout(function () { btn.textContent = original; }, 2500);
+  }
 }
 
 /* "again" button: duo re-quizzes both phones; solo goes home */
@@ -1302,6 +1372,7 @@ function renderMultiMatch(matches) {
               <div>
                 <div class="ci-title">${esc(t.title)}</div>
                 <div class="ci-meta">${badgeText(t)} · ${yearOf(t)}${t.vote ? ' · ★ ' + t.vote : ''}</div>
+                ${availInfo(t) ? `<div class="ci-avail ${availInfo(t).cls}">${availInfo(t).label}</div>` : ''}
               </div>
             </button>`;
   }).join('');

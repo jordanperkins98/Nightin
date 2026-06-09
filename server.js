@@ -153,9 +153,169 @@ function shuffle(arr) {
   return arr;
 }
 
-/* Fetch a shared deck for 1 or 2 answer sets, relaxing filters if too sparse */
+/* =========================================================================
+   Radarr / Sonarr — what's on Jordan's server + sending downloads
+   All optional: if the URL/key env vars aren't set, these no-op and the deck
+   falls back to plain TMDB discovery.
+   ========================================================================= */
+const RADARR = { url: (process.env.RADARR_URL || '').replace(/\/+$/, ''), key: process.env.RADARR_API_KEY || '' };
+const SONARR = { url: (process.env.SONARR_URL || '').replace(/\/+$/, ''), key: process.env.SONARR_API_KEY || '' };
+const radarrOn = function () { return !!(RADARR.url && RADARR.key); };
+const sonarrOn = function () { return !!(SONARR.url && SONARR.key); };
+
+// our quiz genre labels -> the genre name strings Radarr/Sonarr store
+const GENRE_NAMES = {
+  Comedy: 'Comedy', Horror: 'Horror', Romance: 'Romance', 'Sci-Fi': 'Science Fiction',
+  Crime: 'Crime', Fantasy: 'Fantasy', Documentary: 'Documentary', Drama: 'Drama',
+  Thriller: 'Thriller', Mystery: 'Mystery', Action: 'Action', Family: 'Family'
+};
+
+async function arrFetch(base, key, apiPath, opts) {
+  const ctrl = new AbortController();
+  const to = setTimeout(function () { ctrl.abort(); }, 7000);
+  try {
+    const res = await fetch(base + apiPath, Object.assign({
+      signal: ctrl.signal,
+      headers: Object.assign({ 'X-Api-Key': key, 'Content-Type': 'application/json' }, (opts && opts.headers) || {})
+    }, opts || {}));
+    if (!res.ok) throw new Error(apiPath + ' -> HTTP ' + res.status);
+    return res.status === 204 ? null : await res.json();
+  } finally { clearTimeout(to); }
+}
+
+// extract a TMDB-style poster_path (/abc.jpg) from a Radarr/Sonarr image URL
+function posterPathFromImages(images) {
+  if (!Array.isArray(images)) return null;
+  const p = images.find(function (i) { return i.coverType === 'poster'; });
+  const url = p ? (p.remoteUrl || p.url || '') : '';
+  const m = url.match(/\/t\/p\/[^/]+(\/[^?]+)/);
+  return m ? m[1] : null;
+}
+
+// cached library snapshots (refreshed lazily every few minutes)
+const lib = { radarr: null, sonarr: null, ts: 0 };
+const LIB_TTL = 5 * 60 * 1000;
+
+async function refreshLibrary() {
+  if (lib.ts && Date.now() - lib.ts < LIB_TTL) return;
+  if (radarrOn()) {
+    try {
+      const movies = await arrFetch(RADARR.url, RADARR.key, '/api/v3/movie');
+      const byTmdb = new Map(), list = [];
+      (movies || []).forEach(function (m) {
+        const e = {
+          id: m.id, tmdbId: m.tmdbId, title: m.title, year: m.year, hasFile: !!m.hasFile,
+          monitored: !!m.monitored, genres: m.genres || [], runtime: m.runtime || 0,
+          overview: m.overview || '', poster_path: posterPathFromImages(m.images),
+          vote: m.ratings && m.ratings.value ? Math.round(m.ratings.value * 10) / 10 : null
+        };
+        if (m.tmdbId) byTmdb.set(m.tmdbId, e);
+        list.push(e);
+      });
+      lib.radarr = { byTmdb: byTmdb, list: list };
+    } catch (e) { console.warn('[Radarr] refresh failed:', e.message); }
+  }
+  if (sonarrOn()) {
+    try {
+      const series = await arrFetch(SONARR.url, SONARR.key, '/api/v3/series');
+      const byTmdb = new Map(), byTitle = new Map(), list = [];
+      (series || []).forEach(function (s) {
+        const epFiles = s.statistics ? (s.statistics.episodeFileCount || 0) : 0;
+        const e = {
+          id: s.id, tmdbId: s.tmdbId || null, tvdbId: s.tvdbId || null, title: s.title, year: s.year,
+          hasFile: epFiles > 0, monitored: !!s.monitored, genres: s.genres || [],
+          overview: s.overview || '', poster_path: posterPathFromImages(s.images),
+          vote: s.ratings && s.ratings.value ? Math.round(s.ratings.value * 10) / 10 : null
+        };
+        if (s.tmdbId) byTmdb.set(s.tmdbId, e);
+        byTitle.set((s.title || '').toLowerCase() + '|' + (s.year || ''), e);
+        list.push(e);
+      });
+      lib.sonarr = { byTmdb: byTmdb, byTitle: byTitle, list: list };
+    } catch (e) { console.warn('[Sonarr] refresh failed:', e.message); }
+  }
+  lib.ts = Date.now();
+}
+
+function yearNum(t) {
+  const d = t.release_date || t.first_air_date || '';
+  return d ? parseInt(d.slice(0, 4), 10) : null;
+}
+
+// 'downloaded' | 'library' | 'available' | null (media not configured)
+function availabilityFor(t) {
+  if (t.type === 'movie') {
+    if (!radarrOn() || !lib.radarr) return null;
+    const e = lib.radarr.byTmdb.get(t.tmdbId);
+    if (!e) return 'available';
+    return e.hasFile ? 'downloaded' : 'library';
+  }
+  if (!sonarrOn() || !lib.sonarr) return null;
+  let e = lib.sonarr.byTmdb.get(t.tmdbId);
+  if (!e) e = lib.sonarr.byTitle.get((t.title || '').toLowerCase() + '|' + (yearNum(t) || ''));
+  if (!e) return 'available';
+  return e.hasFile ? 'downloaded' : 'library';
+}
+
+function wantedGenreNames(spec) {
+  const names = new Set();
+  [].concat(spec.genres, spec.added).forEach(function (g) {
+    if (GENRE_NAMES[g]) names.add(GENRE_NAMES[g].toLowerCase());
+  });
+  return names;
+}
+function eraOk(year, era) {
+  if (!year) return true;
+  if (era === 'classic') return year <= 1999;
+  if (era === 'modern') return year >= 2000 && year <= 2019;
+  if (era === 'latest') return year >= 2022;
+  return true;
+}
+
+// downloaded library items matching tonight's mood, as deck-shaped titles
+function libraryMatches(spec) {
+  const out = [];
+  const names = wantedGenreNames(spec);
+  const needGenre = names.size > 0;
+  const matchGenre = function (genres) { return genres.some(function (g) { return names.has((g || '').toLowerCase()); }); };
+
+  if (spec.formats.includes('movie') && radarrOn() && lib.radarr) {
+    lib.radarr.list.forEach(function (m) {
+      if (!m.hasFile || !m.tmdbId) return;
+      if (!eraOk(m.year, spec.era)) return;
+      if (spec.runtimeLte && m.runtime && m.runtime > spec.runtimeLte) return;
+      if (needGenre && !matchGenre(m.genres)) return;
+      out.push({
+        id: 'movie-' + m.tmdbId, tmdbId: m.tmdbId, type: 'movie', title: m.title,
+        overview: m.overview, poster_path: m.poster_path, vote: m.vote,
+        release_date: m.year ? m.year + '-01-01' : undefined, availability: 'downloaded'
+      });
+    });
+  }
+  if (spec.formats.includes('tv') && sonarrOn() && lib.sonarr) {
+    lib.sonarr.list.forEach(function (s) {
+      if (!s.hasFile) return;
+      if (!eraOk(s.year, spec.era)) return;
+      if (needGenre && !matchGenre(s.genres)) return;
+      out.push({
+        id: 'tv-' + (s.tmdbId || ('tvdb' + s.tvdbId)), tmdbId: s.tmdbId, tvdbId: s.tvdbId,
+        type: 'tv', title: s.title, overview: s.overview, poster_path: s.poster_path, vote: s.vote,
+        first_air_date: s.year ? s.year + '-01-01' : undefined, availability: 'downloaded'
+      });
+    });
+  }
+  return out;
+}
+
+/* Fetch a shared deck for 1 or 2 answer sets.
+   Server library (downloaded) is prioritised first, then downloadable TMDB
+   picks fill out the deck. Filters relax if TMDB returns too little. */
 async function fetchDeck(answerList) {
   const spec = computeSpec(answerList);
+  await refreshLibrary().catch(function () {});
+
+  // 1) TMDB discovery pool (with relaxation), annotated with server availability
+  let tmdbPool = [];
   for (let relax = 0; relax <= 2; relax++) {
     const results = [];
     for (const type of spec.formats) {
@@ -164,14 +324,80 @@ async function fetchDeck(answerList) {
     }
     const seen = new Set(), unique = [];
     results.forEach(function (r) { if (!seen.has(r.id)) { seen.add(r.id); unique.push(r); } });
-    if (unique.length >= (relax === 0 ? 6 : 1)) {
-      unique.sort(function (x, y) { return (y.poster_path ? 1 : 0) - (x.poster_path ? 1 : 0); });
-      const top = unique.slice(0, 28);
-      shuffle(top);
-      return top.slice(0, 18);
-    }
+    if (unique.length >= (relax === 0 ? 6 : 1)) { tmdbPool = unique; break; }
   }
-  return [];
+  tmdbPool.forEach(function (t) { t.availability = availabilityFor(t); });
+
+  // 2) downloaded library matches (server-first), merged + de-duped
+  const byId = new Map();
+  libraryMatches(spec).forEach(function (t) { if (!byId.has(t.id)) byId.set(t.id, t); });
+  tmdbPool.forEach(function (t) { if (!byId.has(t.id)) byId.set(t.id, t); });
+  const all = Array.from(byId.values());
+
+  // 3) downloaded first (in swipe order), then downloadable; prefer posters in the tail
+  const downloaded = shuffle(all.filter(function (t) { return t.availability === 'downloaded'; }));
+  const rest = shuffle(all.filter(function (t) { return t.availability !== 'downloaded'; }));
+  rest.sort(function (a, b) { return (b.poster_path ? 1 : 0) - (a.poster_path ? 1 : 0); });
+
+  const deck = [];
+  downloaded.slice(0, 14).forEach(function (t) { deck.push(t); });          // leave room for discovery
+  for (const t of rest) { if (deck.length >= 18) break; deck.push(t); }
+  for (const t of downloaded.slice(14)) { if (deck.length >= 18) break; deck.push(t); }
+  return deck.slice(0, 18);
+}
+
+/* =========================================================================
+   Send a title to Radarr / Sonarr to download
+   ========================================================================= */
+async function arrDefaults(base, key) {
+  const profiles = await arrFetch(base, key, '/api/v3/qualityprofile');
+  const roots = await arrFetch(base, key, '/api/v3/rootfolder');
+  if (!profiles || !profiles.length) throw new Error('No quality profile configured');
+  if (!roots || !roots.length) throw new Error('No root folder configured');
+  return { qualityProfileId: profiles[0].id, rootFolderPath: roots[0].path };
+}
+
+async function addMovie(tmdbId) {
+  if (!radarrOn()) throw new Error('Radarr is not configured');
+  const lookup = await arrFetch(RADARR.url, RADARR.key, '/api/v3/movie/lookup?term=tmdb:' + tmdbId);
+  const movie = Array.isArray(lookup) ? lookup[0] : lookup;
+  if (!movie) throw new Error('Not found in Radarr');
+  if (movie.id) return { ok: true, already: true, title: movie.title };
+  const def = await arrDefaults(RADARR.url, RADARR.key);
+  const body = Object.assign({}, movie, {
+    qualityProfileId: def.qualityProfileId, rootFolderPath: def.rootFolderPath,
+    monitored: true, minimumAvailability: 'released', addOptions: { searchForMovie: true }
+  });
+  const added = await arrFetch(RADARR.url, RADARR.key, '/api/v3/movie', { method: 'POST', body: JSON.stringify(body) });
+  return { ok: true, title: added.title };
+}
+
+async function addSeries(tmdbId, title) {
+  if (!sonarrOn()) throw new Error('Sonarr is not configured');
+  // Sonarr keys on TVDB ids — resolve it from TMDB first
+  let tvdbId = null;
+  try {
+    const ext = await (await fetch(TMDB_BASE + '/tv/' + tmdbId + '/external_ids?api_key=' + API_KEY)).json();
+    tvdbId = ext && ext.tvdb_id;
+  } catch (e) {}
+  let lookup = null;
+  if (tvdbId) lookup = await arrFetch(SONARR.url, SONARR.key, '/api/v3/series/lookup?term=tvdb:' + tvdbId);
+  if (!lookup || !lookup.length) lookup = await arrFetch(SONARR.url, SONARR.key, '/api/v3/series/lookup?term=' + encodeURIComponent(title || ''));
+  const series = (lookup || []).find(function (s) { return tvdbId && s.tvdbId === tvdbId; }) || (lookup || [])[0];
+  if (!series) throw new Error('Not found in Sonarr');
+  if (series.id) return { ok: true, already: true, title: series.title };
+  const def = await arrDefaults(SONARR.url, SONARR.key);
+  const body = Object.assign({}, series, {
+    qualityProfileId: def.qualityProfileId, rootFolderPath: def.rootFolderPath,
+    monitored: true, addOptions: { monitor: 'all', searchForMissingEpisodes: true }
+  });
+  // Sonarr v3 requires a languageProfileId; v4 ignores it
+  try {
+    const langs = await arrFetch(SONARR.url, SONARR.key, '/api/v3/languageprofile');
+    if (langs && langs.length) body.languageProfileId = langs[0].id;
+  } catch (e) {}
+  const added = await arrFetch(SONARR.url, SONARR.key, '/api/v3/series', { method: 'POST', body: JSON.stringify(body) });
+  return { ok: true, title: added.title };
 }
 
 async function fetchTrailer(type, tmdbId) {
@@ -226,6 +452,19 @@ const server = http.createServer(async function (req, res) {
     const type = url.searchParams.get('type'), id = url.searchParams.get('id');
     const trailerUrl = await fetchTrailer(type, id);
     return sendJson(res, 200, { url: trailerUrl });
+  }
+
+  // --- API: send a title to Radarr/Sonarr to download ---
+  if (url.pathname === '/api/download' && req.method === 'POST') {
+    try {
+      const b = await readBody(req);
+      const r = b.type === 'tv'
+        ? await addSeries(Number(b.tmdbId), b.title || '')
+        : await addMovie(Number(b.tmdbId));
+      return sendJson(res, 200, r);
+    } catch (e) {
+      return sendJson(res, 400, { ok: false, error: e.message });
+    }
   }
 
   // --- static: only ever serve the SPA ---

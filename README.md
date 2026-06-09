@@ -33,6 +33,23 @@ TMDB_API_KEY=your_tmdb_v3_key node server.js
 
 Get a free TMDB v3 key at https://www.themoviedb.org/settings/api.
 
+### Optional: connect Radarr & Sonarr
+
+Set these (env vars or Portainer) to make the deck prioritise what's already
+**downloaded** on your server, badge each card (▶ on server / ＋ can download),
+and let a match be sent to Radarr/Sonarr with one tap:
+
+```
+RADARR_URL=http://<NAS-IP>:7878
+RADARR_API_KEY=...        # Radarr → Settings → General → API Key
+SONARR_URL=http://<NAS-IP>:8989
+SONARR_API_KEY=...        # Sonarr → Settings → General → API Key
+```
+
+Use the NAS **LAN IP**, not `localhost`, so the container can reach them. Leave
+unset and the app behaves exactly as before (plain TMDB picks, no badges). New
+downloads use each app's **first** quality profile and root folder.
+
 ## Deploy on Synology / Portainer (prebuilt image — no NAS-side build)
 
 A GitHub Action (`.github/workflows/docker-publish.yml`) builds the image on
