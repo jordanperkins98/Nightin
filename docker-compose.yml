@@ -3,8 +3,6 @@
 services:
   nightin:
     build: .
-    # If you'd rather not build, comment out `build:` and use a prebuilt image.
-    container_name: nightin
     restart: unless-stopped
     ports:
       - "8024:8080"          # host:container — browse http://<NAS-IP>:8024
