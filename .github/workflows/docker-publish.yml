@@ -1,0 +1,46 @@
+name: Build & publish image
+
+# Builds the Docker image on GitHub's runners and pushes it to GHCR
+# (ghcr.io/jordanperkins98/nightin) so the NAS only ever PULLS a finished
+# image — no building on Synology/Portainer.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}      # lets you run it manually from the Actions tab
+
+permissions:
+  contents: read
+  packages: write            # allow GITHUB_TOKEN to push to GHCR
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags & labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # image path must be lowercase
+          images: ghcr.io/jordanperkins98/nightin
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

@@ -33,16 +33,33 @@ TMDB_API_KEY=your_tmdb_v3_key node server.js
 
 Get a free TMDB v3 key at https://www.themoviedb.org/settings/api.
 
-## Deploy on Synology / Portainer
+## Deploy on Synology / Portainer (prebuilt image — no NAS-side build)
 
-1. Copy this folder to the NAS (e.g. `/volume1/docker/nightin`).
-2. Portainer → **Stacks → Add stack**.
-3. **Web editor**: paste `docker-compose.yml` (or use **Upload** / **Repository**).
-4. Set `TMDB_API_KEY` in the stack's environment (it's pre-filled in the compose
-   file — change it there or override it as a stack env var).
+A GitHub Action (`.github/workflows/docker-publish.yml`) builds the image on
+every push to `main` and publishes it to **GHCR** at
+`ghcr.io/jordanperkins98/nightin:latest`. The NAS only *pulls* it.
+
+**One-time setup**
+
+1. Push to `main` (or run the workflow from the **Actions** tab). Wait for the
+   "Build & publish image" run to go green.
+2. Make the package pullable by the NAS. On GitHub → your profile →
+   **Packages → nightin → Package settings**: either set **visibility = Public**
+   (simplest for a home NAS), or keep it private and add a GHCR pull token in
+   Portainer (Personal Access Token with `read:packages`).
+
+**Deploy the stack**
+
+3. Portainer → **Stacks → Add stack**, build method **Repository**:
+   - **Repository URL:** `https://github.com/jordanperkins98/Nightin`
+   - **Compose path:** `docker-compose.yml`
+4. **Environment variables** → add `TMDB_API_KEY` = your TMDB v3 key.
 5. Deploy. Browse to `http://<NAS-IP>:8024`.
 
-To reach it from phones on the same Wi-Fi, just use the NAS IP. For use away from
+**Updating later:** push to `main` → wait for the Action → in Portainer open the
+stack and hit **Pull and redeploy** (the image uses `pull_policy: always`).
+
+To reach it from phones on the same Wi-Fi, use the NAS IP. For use away from
 home, put it behind your existing reverse proxy / HTTPS — the client auto-uses
 `wss://` when served over HTTPS.
 
