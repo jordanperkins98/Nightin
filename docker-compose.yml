@@ -1,0 +1,16 @@
+# Paste this into a Portainer "Stack". Set TMDB_API_KEY below (or as a
+# stack environment variable) and change the host port if 8080 is taken.
+services:
+  nightin:
+    build: .
+    # If you'd rather not build, comment out `build:` and use a prebuilt image.
+    container_name: nightin
+    restart: unless-stopped
+    ports:
+      - "8024:8080"          # host:container — browse http://<NAS-IP>:8024
+    environment:
+      # Do NOT hardcode the key here (keeps it out of git). Provide TMDB_API_KEY
+      # via Portainer's "Environment variables" field when creating the stack,
+      # or a local .env file (gitignored). See .env.example.
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - PORT=8080

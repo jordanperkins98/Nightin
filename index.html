@@ -1,0 +1,1426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0D0D0F" />
+<title>NightIn — Pick something together</title>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet" />
+
+<style>
+  /* ===================== Design tokens ===================== */
+  :root {
+    --bg: #0D0D0F;
+    --bg-soft: #16161A;
+    --accent: #C0392B;
+    --accent-soft: #e0554480;
+    --cream: #F0EAD6;
+    --cream-dim: #f0ead6a6;
+    --like: #2ecc71;
+    --nope: #e74c3c;
+    --skeleton: #1a1a1a;
+    --card-radius: 22px;
+    --maxw: 460px;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--cream);
+    font-family: 'Inter', system-ui, sans-serif;
+    overscroll-behavior: none;
+  }
+
+  body {
+    display: flex;
+    justify-content: center;
+    /* faint cinematic vignette */
+    background:
+      radial-gradient(120% 80% at 50% -10%, #1b1216 0%, var(--bg) 55%);
+  }
+
+  #app {
+    width: 100%;
+    max-width: var(--maxw);
+    min-height: 100dvh;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  h1, h2, h3, .display {
+    font-family: 'Playfair Display', Georgia, serif;
+    letter-spacing: 0.3px;
+  }
+
+  /* ===================== Screens ===================== */
+  .screen {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+    padding: 22px 20px calc(20px + env(safe-area-inset-bottom));
+    animation: fade 0.35s ease;
+  }
+  .screen.active { display: flex; }
+
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  /* ===================== Buttons ===================== */
+  button { font-family: inherit; cursor: pointer; border: none; }
+
+  .btn {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+    font-size: 17px;
+    padding: 15px 18px;
+    border-radius: 14px;
+    width: 100%;
+    transition: transform 0.12s ease, filter 0.12s ease, opacity 0.2s;
+    box-shadow: 0 8px 24px -10px var(--accent);
+  }
+  .btn:active { transform: scale(0.97); filter: brightness(1.08); }
+  .btn:disabled { opacity: 0.35; box-shadow: none; }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--cream-dim);
+    border: 1px solid #ffffff1f;
+    box-shadow: none;
+  }
+  .btn-ghost:active { background: #ffffff0d; }
+
+  .link {
+    color: var(--accent);
+    background: none;
+    text-decoration: underline;
+    font-size: 15px;
+    padding: 8px;
+  }
+
+  /* ===================== Brand / Title screen ===================== */
+  .brand {
+    text-align: center;
+    margin: auto 0;
+  }
+  .brand .logo {
+    font-size: 58px;
+    font-weight: 800;
+    line-height: 1;
+    background: linear-gradient(180deg, #fff, var(--cream));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .brand .logo .in { color: var(--accent); -webkit-text-fill-color: var(--accent); }
+  .brand .tag { color: var(--cream-dim); margin-top: 10px; font-size: 16px; }
+  .brand .marks { font-size: 30px; margin: 18px 0 4px; letter-spacing: 6px; }
+
+  .start-actions { margin-top: auto; display: grid; gap: 12px; }
+
+  /* ===================== Two-phone room ===================== */
+  .back-top { align-self: flex-start; padding-left: 0; margin-bottom: 4px; }
+  .room-wrap { margin: auto 0; }
+  .room-h { font-size: 32px; margin: 0 0 8px; }
+  .room-sub { color: var(--cream-dim); font-size: 15px; line-height: 1.5; margin: 0 0 26px; }
+  .or { text-align: center; color: var(--cream-dim); font-size: 13px; margin: 16px 0; position: relative; }
+  .or::before, .or::after { content: ''; position: absolute; top: 50%; width: 38%; height: 1px; background: #ffffff1f; }
+  .or::before { left: 0; } .or::after { right: 0; }
+  .join-row { display: flex; gap: 10px; }
+  .code-input {
+    flex: 1; min-width: 0; background: var(--bg-soft); border: 1.5px solid #ffffff1f; color: var(--cream);
+    border-radius: 14px; padding: 15px 18px; font-size: 22px; font-weight: 700;
+    letter-spacing: 6px; text-align: center; text-transform: uppercase; font-family: 'Inter';
+  }
+  .code-input:focus { outline: none; border-color: var(--accent); }
+  .join-btn { width: auto; flex: none; padding-left: 26px; padding-right: 26px; }
+  .join-err { color: var(--nope); font-size: 13.5px; margin-top: 12px; min-height: 18px; text-align: center; }
+
+  .lobby { margin: auto 0; text-align: center; }
+  .lobby-label { color: var(--cream-dim); font-size: 14px; margin-bottom: 16px; }
+  .code-display {
+    font-family: 'Playfair Display', serif; font-size: 72px; font-weight: 800;
+    letter-spacing: 10px; color: var(--accent); line-height: 1;
+    text-shadow: 0 8px 30px #c0392b55; padding-left: 10px;
+  }
+  .lobby-wait { color: var(--cream-dim); margin: 22px 0 26px; }
+  .dots { display: flex; gap: 7px; justify-content: center; margin-top: 22px; }
+  .dots span {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--accent);
+    animation: blink 1.2s ease-in-out infinite;
+  }
+  .dots span:nth-child(2) { animation-delay: 0.2s; }
+  .dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink { 0%, 100% { opacity: 0.25; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }
+
+  /* ===================== Quiz ===================== */
+  .progress-wrap {
+    height: 5px;
+    background: #ffffff14;
+    border-radius: 99px;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+  .progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 99px;
+    transition: width 0.35s cubic-bezier(.4,0,.2,1);
+  }
+  .progress-label { font-size: 12px; color: var(--cream-dim); margin-bottom: 18px; }
+
+  .q-title { font-size: 26px; margin: 6px 0 4px; font-weight: 700; }
+  .q-hint { color: var(--cream-dim); font-size: 14px; margin-bottom: 22px; }
+
+  .options { display: grid; gap: 12px; }
+  .options.grid2 { grid-template-columns: 1fr 1fr; }
+
+  .option {
+    background: var(--bg-soft);
+    border: 1.5px solid #ffffff14;
+    color: var(--cream);
+    border-radius: 14px;
+    padding: 16px;
+    font-size: 16px;
+    text-align: left;
+    transition: border-color 0.15s, background 0.15s, transform 0.1s;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .option .emoji { font-size: 22px; }
+  .option .sub { display: block; font-size: 12.5px; color: var(--cream-dim); margin-top: 2px; }
+  .option:active { transform: scale(0.98); }
+  .option.selected {
+    border-color: var(--accent);
+    background: linear-gradient(180deg, #1f1416, #16161A);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+
+  .quiz-foot { margin-top: auto; padding-top: 18px; display: flex; gap: 12px; align-items: center; }
+  .quiz-foot .btn { flex: 1; }
+  .quiz-foot .back { width: 52px; flex: none; }
+
+  /* ===================== Loading ===================== */
+  .loader-wrap { margin: auto; text-align: center; }
+  .reel {
+    width: 64px; height: 64px; margin: 0 auto 20px;
+    border-radius: 50%;
+    border: 4px solid #ffffff1a;
+    border-top-color: var(--accent);
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader-wrap .msg { color: var(--cream-dim); }
+
+  /* ===================== Swipe deck ===================== */
+  .deck-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .player-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-soft);
+    border: 1px solid #ffffff14;
+    padding: 7px 14px;
+    border-radius: 99px;
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .player-pill .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+  .deck-count { color: var(--cream-dim); font-size: 13px; }
+
+  .deck {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    margin: 4px 0 8px;
+  }
+
+  .card {
+    position: absolute;
+    inset: 0;
+    height: 72%;
+    top: 0;
+    border-radius: var(--card-radius);
+    overflow: hidden;
+    background: var(--skeleton);
+    box-shadow: 0 24px 50px -22px #000;
+    will-change: transform;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  /* top card sits in front; back cards peek out as a stack */
+  .card.swipable { cursor: grab; }
+  .card.swipable:active { cursor: grabbing; }
+
+  .card .skeleton {
+    position: absolute; inset: 0;
+    background: var(--skeleton);
+    animation: pulse 1.3s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+  .card .poster {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+  }
+  .card .poster.loaded { opacity: 1; }
+
+  /* fallback when poster_path is null */
+  .card .fallback {
+    position: absolute; inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    background: linear-gradient(160deg, #241a1c 0%, #0f0f12 100%);
+  }
+  .card.no-poster .skeleton { display: none; }
+  .card.no-poster .fallback { display: flex; }
+  .card .fallback .ft { font-family:'Playfair Display',serif; font-size: 28px; font-weight: 700; line-height: 1.2; }
+  .card .fallback .fmeta { color: var(--cream-dim); margin-top: 10px; font-size: 13px; }
+  .card .fallback .ficon { font-size: 40px; opacity: 0.5; margin-bottom: 14px; }
+
+  .card .gradient {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    height: 55%;
+    background: linear-gradient(to top, #000000f2 6%, #000000a6 38%, transparent 100%);
+    pointer-events: none;
+  }
+  .card .info {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 18px 18px 20px;
+    pointer-events: none;
+  }
+  .card .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    background: var(--accent);
+    color: #fff;
+    padding: 3px 9px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+  }
+  .card .title { font-family:'Playfair Display',serif; font-size: 27px; font-weight: 700; line-height: 1.12; }
+  .card .meta { margin-top: 7px; font-size: 13.5px; color: #e7e1d0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .card .meta .star { color: #ffd35b; }
+  .card .ov { margin-top: 9px; font-size: 12.5px; color: #cfc9ba; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card.show-ov .ov { -webkit-line-clamp: 10; }
+  .card.show-ov .gradient { height: 75%; }
+
+  /* swipe stamps */
+  .card .stamp {
+    position: absolute; top: 26px;
+    font-size: 30px; font-weight: 800;
+    padding: 6px 16px;
+    border-radius: 12px;
+    border: 4px solid;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+  .card .stamp.like { left: 20px; color: var(--like); border-color: var(--like); transform: rotate(-16deg); }
+  .card .stamp.nope { right: 20px; color: var(--nope); border-color: var(--nope); transform: rotate(16deg); }
+
+  .deck-controls {
+    display: flex;
+    justify-content: center;
+    gap: 26px;
+    margin-top: 4px;
+  }
+  .round-btn {
+    width: 62px; height: 62px; border-radius: 50%;
+    display: grid; place-items: center;
+    font-size: 26px;
+    background: var(--bg-soft);
+    border: 1.5px solid #ffffff1a;
+    transition: transform 0.12s, background 0.12s;
+  }
+  .round-btn:active { transform: scale(0.9); }
+  .round-btn.no { color: var(--nope); }
+  .round-btn.yes { color: var(--like); }
+  .round-btn.info { font-size: 22px; color: var(--cream-dim); width: 48px; height: 48px; align-self: center; }
+
+  /* ===================== Pass the phone ===================== */
+  .pass {
+    margin: auto;
+    text-align: center;
+  }
+  .pass .phone-emoji { font-size: 64px; animation: wiggle 1.4s ease-in-out infinite; }
+  @keyframes wiggle { 0%,100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+  .pass h2 { font-size: 30px; margin: 18px 0 6px; }
+  .pass p { color: var(--cream-dim); margin: 0 0 26px; line-height: 1.5; }
+
+  /* ===================== Match screen ===================== */
+  .match-screen { padding: 0; }
+  .match-hero {
+    position: relative;
+    height: 52%;
+    min-height: 320px;
+    flex: none;
+  }
+  .match-hero .bg {
+    position: absolute; inset: 0;
+    background-size: cover;
+    background-position: center;
+    background-color: var(--skeleton);
+  }
+  .match-hero .scrim {
+    position: absolute; inset: 0;
+    background: linear-gradient(to bottom, #0d0d0f33 0%, #0d0d0f00 30%, var(--bg) 99%);
+  }
+  .match-hero .top-banner {
+    position: absolute; top: calc(16px + env(safe-area-inset-top)); left: 0; right: 0;
+    text-align: center;
+    font-family:'Playfair Display',serif;
+    font-size: 22px;
+    font-weight: 700;
+    text-shadow: 0 2px 12px #000;
+  }
+  .match-hero .top-banner small { display:block; font-family:'Inter'; font-weight:600; font-size: 12px; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; }
+
+  .match-body {
+    flex: 1;
+    padding: 8px 22px calc(22px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .match-body h2 { font-size: 30px; margin: 0 0 6px; line-height: 1.1; }
+  .match-body .mmeta { color: var(--cream-dim); font-size: 14px; display:flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .match-body .mmeta .star { color: #ffd35b; }
+  .match-body .synopsis { font-size: 14.5px; line-height: 1.55; color: #d8d2c2; }
+  .match-body .actions { margin-top: auto; padding-top: 20px; display: grid; gap: 10px; }
+
+  /* multiple-match chooser */
+  .chooser-list { display: grid; gap: 12px; margin: 6px 0 4px; }
+  .choose-item {
+    display: flex; gap: 14px; align-items: center;
+    background: var(--bg-soft);
+    border: 1.5px solid #ffffff14;
+    border-radius: 14px;
+    padding: 10px;
+    text-align: left;
+    color: var(--cream);
+  }
+  .choose-item:active { transform: scale(0.99); }
+  .choose-item img, .choose-item .mini-fallback {
+    width: 56px; height: 80px; border-radius: 9px; object-fit: cover; flex: none;
+    background: linear-gradient(160deg,#241a1c,#0f0f12);
+    display:flex; align-items:center; justify-content:center; font-size:10px; color: var(--cream-dim); text-align:center; padding: 4px;
+  }
+  .choose-item .ci-title { font-weight: 600; font-size: 15px; }
+  .choose-item .ci-meta { font-size: 12.5px; color: var(--cream-dim); margin-top: 3px; }
+
+  /* no match */
+  .nomatch { margin: auto 0; text-align: center; }
+  .nomatch .x { font-size: 50px; }
+  .nomatch h2 { font-size: 28px; margin: 14px 0 8px; }
+  .nomatch p { color: var(--cream-dim); margin: 0 auto 22px; line-height: 1.5; max-width: 300px; }
+  .miss-card {
+    display: flex; gap: 14px; text-align: left;
+    background: var(--bg-soft); border: 1px solid #ffffff14;
+    border-radius: 16px; padding: 12px; margin-bottom: 26px;
+  }
+  .miss-card img, .miss-card .mini-fallback {
+    width: 72px; height: 104px; border-radius: 10px; object-fit: cover; flex: none;
+    background: linear-gradient(160deg,#241a1c,#0f0f12);
+    display:flex; align-items:center; justify-content:center; font-size:11px; color: var(--cream-dim); text-align:center; padding:4px;
+  }
+  .miss-card .mc-label { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .miss-card .mc-title { font-family:'Playfair Display',serif; font-size: 19px; font-weight: 700; margin: 4px 0; }
+  .miss-card .mc-meta { font-size: 12.5px; color: var(--cream-dim); }
+
+  .center-actions { display: grid; gap: 11px; width: 100%; }
+
+  /* ===================== Confetti ===================== */
+  #confetti {
+    position: fixed; inset: 0; pointer-events: none; z-index: 50; overflow: hidden; display: none;
+  }
+  #confetti.on { display: block; }
+  .conf {
+    position: absolute; top: -20px; width: 9px; height: 14px; border-radius: 2px;
+    animation: drop linear forwards;
+  }
+  @keyframes drop {
+    to { transform: translateY(108vh) rotate(720deg); opacity: 0.9; }
+  }
+
+  /* error */
+  .error-box {
+    margin: auto; text-align: center;
+  }
+  .error-box .x { font-size: 44px; }
+  .error-box h2 { font-size: 24px; margin: 12px 0 8px; }
+  .error-box p { color: var(--cream-dim); line-height: 1.5; margin: 0 0 22px; }
+
+  .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="confetti"></div>
+
+<script>
+/* =========================================================================
+   NightIn — couples' movie & TV picker (client)
+
+   The backend (server.js) holds the TMDB key, merges both players' answers,
+   fetches the shared deck, and syncs the two phones over WebSocket. This file
+   is the UI + the thin client that talks to it.
+
+   Two modes:
+     • DUO  — two phones, a room code, each does their own quiz, shared deck.
+     • SOLO — one phone, pass-and-play (one quiz, both swipe in turn).
+   ========================================================================= */
+
+// Same-origin when served by server.js. The TMDB image CDN is public (no key).
+const API_BASE = '';
+const WS_URL   = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+const IMG_W500 = 'https://image.tmdb.org/t/p/w500';
+const IMG_W780 = 'https://image.tmdb.org/t/p/w780';
+
+/* ---------------- Quiz definition ---------------- */
+const QUESTIONS = [
+  {
+    key: 'vibe', title: 'Vibe tonight?', hint: 'Set the emotional tone.', multi: false,
+    opts: [
+      { v: 'Chill',   label: 'Chill',   emoji: '🛋️', sub: 'Easy & comforting' },
+      { v: 'Laugh',   label: 'Laugh',   emoji: '😂', sub: 'Make us grin' },
+      { v: 'Cry',     label: 'Cry',     emoji: '😭', sub: 'Hit us in the feels' },
+      { v: 'Thrills', label: 'Thrills', emoji: '😱', sub: 'Edge of the seat' },
+      { v: 'Think',   label: 'Think',   emoji: '🧠', sub: 'Smart & slow-burn' }
+    ]
+  },
+  {
+    key: 'length', title: 'How long have you got?', hint: 'Pick the format.', multi: false,
+    opts: [
+      { v: 'short',  label: 'Under 90 mins', emoji: '⏱️', sub: 'A quick movie' },
+      { v: 'movie',  label: 'A movie',       emoji: '🎬', sub: 'Standard feature' },
+      { v: 'series', label: 'Binge a series', emoji: '📺', sub: 'TV episodes' }
+    ]
+  },
+  {
+    key: 'genres', title: 'Genre mood?', hint: 'Pick any that fit (or none).', multi: true, grid: true,
+    opts: [
+      { v: 'Comedy', label: 'Comedy', emoji: '😄' },
+      { v: 'Horror', label: 'Horror', emoji: '👻' },
+      { v: 'Romance', label: 'Romance', emoji: '❤️' },
+      { v: 'Sci-Fi', label: 'Sci-Fi', emoji: '🚀' },
+      { v: 'Crime', label: 'Crime', emoji: '🔪' },
+      { v: 'Fantasy', label: 'Fantasy', emoji: '🐉' },
+      { v: 'Documentary', label: 'Documentary', emoji: '🎥' }
+    ]
+  },
+  {
+    key: 'energy', title: 'Energy level?', hint: 'How much attention can you give?', multi: false,
+    opts: [
+      { v: 'zombie', label: 'Sofa zombie', emoji: '🧟', sub: 'Light & easy' },
+      { v: 'light',  label: 'Lightly engaged', emoji: '🙂', sub: 'Half watching' },
+      { v: 'full',   label: 'Full attention', emoji: '🤓', sub: 'Bring complexity' }
+    ]
+  },
+  {
+    key: 'era', title: 'Era preference?', hint: 'When was it made?', multi: false,
+    opts: [
+      { v: 'any',     label: 'Anything', emoji: '♾️' },
+      { v: 'classic', label: 'Classic — pre-2000', emoji: '🎞️' },
+      { v: 'modern',  label: 'Modern — 2000s–2010s', emoji: '📀' },
+      { v: 'latest',  label: 'Latest releases', emoji: '✨' }
+    ]
+  },
+  {
+    key: 'services', title: 'Where are we watching?', hint: 'Pick what you have.', multi: true, grid: true, optional: true,
+    opts: [
+      { v: 'Netflix', label: 'Netflix', emoji: '🔴' },
+      { v: 'Prime',   label: 'Prime',   emoji: '🔵' },
+      { v: 'any',     label: 'Anything', emoji: '🏠', sub: "Jordan's Server" }
+    ]
+  }
+];
+
+/* ---------------- App state (in memory) ---------------- */
+const state = {
+  mode: 'solo',       // 'solo' (pass-and-play) | 'duo' (two phones)
+  answers: {},        // this device's quiz answers
+  qIndex: 0,
+  deck: [],           // normalized title objects (from server)
+  player: 1,          // solo: whose turn to swipe; duo: this device's player #
+  likes: { 1: new Set(), 2: new Set() },
+  swipeIndex: 0,
+
+  // duo / networking
+  ws: null,
+  room: null,
+  connected: false
+};
+
+const app = document.getElementById('app');
+
+/* ====================================================================
+   Helpers
+   ==================================================================== */
+function el(html) {
+  const t = document.createElement('template');
+  t.innerHTML = html.trim();
+  return t.content.firstElementChild;
+}
+function clearApp() { app.innerHTML = ''; }
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function yearOf(t) {
+  const d = t.release_date || t.first_air_date || '';
+  return d ? d.slice(0, 4) : '—';
+}
+
+/* persist quiz answers (lightweight, optional) */
+function saveAnswers() {
+  try { localStorage.setItem('nightin.answers', JSON.stringify(state.answers)); } catch (e) {}
+}
+function loadAnswers() {
+  try {
+    const a = JSON.parse(localStorage.getItem('nightin.answers') || '{}');
+    if (a && typeof a === 'object') return a;
+  } catch (e) {}
+  return {};
+}
+
+/* ====================================================================
+   Networking (duo mode)
+   ==================================================================== */
+function connectWS(onReady) {
+  if (state.ws && state.connected) { onReady && onReady(); return; }
+  const ws = new WebSocket(WS_URL);
+  state.ws = ws;
+  ws.onopen = function () { state.connected = true; onReady && onReady(); };
+  ws.onmessage = function (e) { try { handleWS(JSON.parse(e.data)); } catch (err) {} };
+  ws.onclose = function () { state.connected = false; };
+  ws.onerror = function () {};
+}
+function wsSend(obj) { if (state.ws && state.connected) state.ws.send(JSON.stringify(obj)); }
+
+function handleWS(m) {
+  switch (m.t) {
+    case 'created':   state.room = m.room; state.player = 1; renderLobby(); break;
+    case 'joined':    state.room = m.room; state.player = 2; break; // wait for both-here
+    case 'join-error': showJoinError(m.msg); break;
+    case 'both-here': beginDuoQuiz(); break;
+    case 'peer-ready': setWaitNote('Your partner finished their quiz ✓'); break;
+    case 'status':    setWaitNote(m.msg); break;
+    case 'deck':      state.deck = m.titles; startDuoSwipe(); break;
+    case 'peer-done': setWaitNote('Your partner is done swiping ✓'); break;
+    case 'result':    renderResult(m); break;
+    case 'picked':    renderSingleMatch(idToTitle(m.titleId)); break;
+    case 'peer-left': renderPeerLeft(); break;
+    case 'error':     renderError(m.msg); break;
+  }
+}
+
+/* ====================================================================
+   SCREEN: Start / mode select
+   ==================================================================== */
+function renderStart() {
+  clearApp();
+  const s = el(`
+    <div class="screen active">
+      <div class="brand">
+        <div class="marks">🎬 🍿 🛋️</div>
+        <div class="logo">Night<span class="in">In</span></div>
+        <div class="tag">Two of you. Pick something together — no more arguments.</div>
+      </div>
+      <div class="start-actions">
+        <button class="btn" id="duo">🎬 Play on two phones</button>
+        <button class="btn btn-ghost" id="solo">📱 Same phone — pass &amp; play</button>
+        <button class="link" id="lucky">🎲 Feeling lucky — surprise us</button>
+      </div>
+    </div>
+  `);
+  app.appendChild(s);
+  s.querySelector('#duo').onclick = renderRoomChoice;
+  s.querySelector('#solo').onclick = function () { state.mode = 'solo'; startQuiz(); };
+  s.querySelector('#lucky').onclick = feelingLucky;
+}
+
+function startQuiz() {
+  state.answers = { genres: [], services: [] };
+  state.qIndex = 0;
+  renderQuestion();
+}
+
+/* "Feeling lucky" — randomise answers (solo) and go straight to a deck */
+function feelingLucky() {
+  state.mode = 'solo';
+  const r = function (arr) { return arr[Math.floor(Math.random() * arr.length)]; };
+  const genrePool = QUESTIONS[2].opts.map(function (o) { return o.v; });
+  shuffle(genrePool);
+  state.answers = {
+    vibe: r(['Chill', 'Laugh', 'Cry', 'Thrills', 'Think']),
+    length: r(['short', 'movie', 'series']),
+    genres: genrePool.slice(0, 1 + Math.floor(Math.random() * 2)),
+    energy: r(['zombie', 'light', 'full']),
+    era: r(['any', 'modern', 'latest']),
+    services: ['any']
+  };
+  fetchSoloDeck();
+}
+
+/* ====================================================================
+   SCREEN: Two-phone room — create or join
+   ==================================================================== */
+function renderRoomChoice() {
+  state.mode = 'duo';
+  clearApp();
+  const s = el(`
+    <div class="screen active">
+      <button class="link back-top" id="back">‹ Back</button>
+      <div class="room-wrap">
+        <h2 class="room-h">Play together</h2>
+        <p class="room-sub">Each of you answers on your own phone, then you swipe the same deck. Matches pop up on both screens.</p>
+        <button class="btn" id="create">Create a room</button>
+        <div class="or">or</div>
+        <div class="join-row">
+          <input class="code-input" id="code" placeholder="CODE" maxlength="4" autocapitalize="characters" autocomplete="off" />
+          <button class="btn join-btn" id="join">Join</button>
+        </div>
+        <div class="join-err" id="joinerr"></div>
+      </div>
+    </div>
+  `);
+  app.appendChild(s);
+  const codeInput = s.querySelector('#code');
+  codeInput.addEventListener('input', function () { codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+
+  s.querySelector('#back').onclick = renderStart;
+  s.querySelector('#create').onclick = function () {
+    connectWS(function () { wsSend({ t: 'create' }); });
+  };
+  s.querySelector('#join').onclick = function () {
+    const code = codeInput.value.trim();
+    if (code.length < 4) { showJoinError('Enter the 4-character code'); return; }
+    connectWS(function () { wsSend({ t: 'join', room: code }); });
+  };
+}
+
+function showJoinError(msg) {
+  const e = document.getElementById('joinerr');
+  if (e) e.textContent = msg;
+}
+
+/* host waits in a lobby showing the room code */
+function renderLobby() {
+  clearApp();
+  const s = el(`
+    <div class="screen active">
+      <div class="lobby">
+        <div class="lobby-label">Share this code with your partner</div>
+        <div class="code-display">${esc(state.room)}</div>
+        <div class="dots"><span></span><span></span><span></span></div>
+        <p class="lobby-wait">Waiting for them to join…</p>
+        <button class="btn btn-ghost" id="cancel">Cancel</button>
+      </div>
+    </div>
+  `);
+  app.appendChild(s);
+  s.querySelector('#cancel').onclick = function () { try { state.ws.close(); } catch (e) {} state.ws = null; state.connected = false; renderStart(); };
+}
+
+function beginDuoQuiz() {
+  state.answers = { genres: [], services: [] };
+  state.qIndex = 0;
+  renderQuestion();
+}
+
+/* ====================================================================
+   SCREEN: Quiz question
+   ==================================================================== */
+function renderQuestion() {
+  clearApp();
+  const q = QUESTIONS[state.qIndex];
+  const total = QUESTIONS.length;
+  const pct = Math.round((state.qIndex / total) * 100);
+
+  const selected = state.answers[q.key];
+  const isSel = function (v) {
+    if (q.multi) return Array.isArray(selected) && selected.indexOf(v) !== -1;
+    return selected === v;
+  };
+
+  const optsHtml = q.opts.map(function (o) {
+    const sub = o.sub ? `<span class="sub">${esc(o.sub)}</span>` : '';
+    return `<button class="option ${isSel(o.v) ? 'selected' : ''}" data-v="${esc(o.v)}">
+              <span class="emoji">${o.emoji}</span>
+              <span><span class="ol">${esc(o.label)}</span>${sub}</span>
+            </button>`;
+  }).join('');
+
+  const canNext = q.multi || q.optional ? true : !!selected;
+
+  const s = el(`
+    <div class="screen active">
+      <div class="progress-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>
+      <div class="progress-label">Question ${state.qIndex + 1} of ${total}</div>
+
+      <div class="q-title">${esc(q.title)}</div>
+      <div class="q-hint">${esc(q.hint)}${q.multi ? ' (multi-select)' : ''}</div>
+
+      <div class="options ${q.grid ? 'grid2' : ''}">${optsHtml}</div>
+
+      <div class="quiz-foot">
+        ${state.qIndex > 0 ? '<button class="btn btn-ghost back">‹</button>' : ''}
+        <button class="btn next" ${canNext ? '' : 'disabled'}>
+          ${state.qIndex === total - 1 ? 'See picks →' : 'Next'}
+        </button>
+      </div>
+    </div>
+  `);
+  app.appendChild(s);
+
+  // animate progress bar to "current" position after paint
+  requestAnimationFrame(function () {
+    s.querySelector('.progress-bar').style.width = Math.round(((state.qIndex + 1) / total) * 100) + '%';
+  });
+
+  const nextBtn = s.querySelector('.next');
+
+  s.querySelectorAll('.option').forEach(function (btn) {
+    btn.onclick = function () {
+      const v = btn.getAttribute('data-v');
+      if (q.multi) {
+        const arr = state.answers[q.key] || [];
+        const i = arr.indexOf(v);
+        if (i === -1) arr.push(v); else arr.splice(i, 1);
+        state.answers[q.key] = arr;
+        btn.classList.toggle('selected');
+      } else {
+        state.answers[q.key] = v;
+        s.querySelectorAll('.option').forEach(function (b) { b.classList.remove('selected'); });
+        btn.classList.add('selected');
+        nextBtn.disabled = false;
+        // auto-advance on single-select for snappy feel
+        setTimeout(goNext, 180);
+      }
+    };
+  });
+
+  if (state.qIndex > 0) s.querySelector('.back').onclick = function () {
+    state.qIndex--; renderQuestion();
+  };
+  nextBtn.onclick = goNext;
+}
+
+function goNext() {
+  if (state.qIndex < QUESTIONS.length - 1) {
+    state.qIndex++;
+    renderQuestion();
+  } else if (state.mode === 'duo') {
+    // hand my answers to the server; it builds the shared deck once both are in
+    wsSend({ t: 'answers', answers: state.answers });
+    renderWaiting('Waiting for your partner to finish their quiz…');
+  } else {
+    fetchSoloDeck();
+  }
+}
+
+/* ====================================================================
+   Server-backed deck + trailer (TMDB key lives on the server)
+   ==================================================================== */
+async function apiDeck(answerList) {
+  const res = await fetch(API_BASE + '/api/deck', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answers: answerList })
+  });
+  if (!res.ok) {
+    let msg = 'Server error (' + res.status + ')';
+    try { msg = (await res.json()).error || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  return (await res.json()).titles || [];
+}
+
+async function apiTrailer(title) {
+  try {
+    const res = await fetch(API_BASE + '/api/trailer?type=' + title.type + '&id=' + title.tmdbId);
+    if (!res.ok) return null;
+    return (await res.json()).url || null;
+  } catch (e) { return null; }
+}
+
+/* SOLO / pass-and-play: this device fetches the deck for one answer set */
+async function fetchSoloDeck() {
+  renderLoading();
+  try {
+    const titles = await apiDeck([state.answers]);
+    if (!titles.length) { renderError('No titles matched that mood. Try loosening the filters.'); return; }
+    state.deck = titles;
+    startSwipeSession();
+  } catch (e) {
+    renderError(e.message || 'Could not reach the server.');
+  }
+}
+
+/* ====================================================================
+   SCREEN: Waiting (duo) — between quiz/swipe handoffs
+   ==================================================================== */
+function renderWaiting(msg) {
+  clearApp();
+  const s = el(`
+    <div class="screen active">
+      <div class="loader-wrap">
+        <div class="reel"></div>
+        <div class="msg" id="waitmsg">${esc(msg)}</div>
+        <div class="dots" style="justify-content:center;margin-top:14px"><span></span><span></span><span></span></div>
+      </div>
+    </div>
+  `);
+  app.appendChild(s);
+}
+function setWaitNote(msg) {
+  const m = document.getElementById('waitmsg');
+  if (m) m.textContent = msg;
+}
+
+function renderPeerLeft() {
+  clearApp();
+  const s = el(`
+    <div class="screen active">
+      <div class="error-box">
+        <div class="x">👋</div>
+        <h2>Your partner left</h2>
+        <p>The other phone disconnected. Start a fresh night in?</p>
+        <button class="btn" id="home">Back to start</button>
+      </div>
+    </div>
+  `);
+  app.appendChild(s);
+  s.querySelector('#home').onclick = goHome;
+}
+
+function goHome() {
+  try { if (state.ws) state.ws.close(); } catch (e) {}
+  state.ws = null; state.connected = false; state.room = null; state.mode = 'solo';
+  renderStart();
+}
+
+/* ====================================================================
+   SCREEN: Loading
+   ==================================================================== */
+function renderLoading() {
+  clearApp();
+  app.appendChild(el(`
+    <div class="screen active">
+      <div class="loader-wrap">
+        <div class="reel"></div>
+        <div class="msg">Curating your night in…</div>
+      </div>
+    </div>
+  `));
+}
+
+/* ====================================================================
+   SCREEN: Error
+   ==================================================================== */
+function renderError(msg) {
+  clearApp();
+  const s = el(`
+    <div class="screen active">
+      <div class="error-box">
+        <div class="x">🎬💔</div>
+        <h2>Something went wrong</h2>
+        <p>${esc(msg)}</p>
+        <button class="btn" id="retry">Back to start</button>
+      </div>
+    </div>
+  `);
+  app.appendChild(s);
+  s.querySelector('#retry').onclick = renderStart;
+}
+
+/* ====================================================================
+   Swipe session control
+   ==================================================================== */
+/* SOLO: player 1 swipes, then player 2 (pass-and-play) */
+function startSwipeSession() {
+  state.player = 1;
+  state.likes = { 1: new Set(), 2: new Set() };
+  state.swipeIndex = 0;
+  renderDeck();
+}
+
+/* DUO: this device swipes the shared deck once as its assigned player */
+function startDuoSwipe() {
+  state.likes[state.player] = new Set();
+  state.swipeIndex = 0;
+  renderDeck();
+}
+
+function poster500(t) { return t.poster_path ? IMG_W500 + t.poster_path : null; }
+function poster780(t) { return t.poster_path ? IMG_W780 + t.poster_path : null; }
+
+/* preload the next card's poster so the next swipe feels instant */
+function preloadNext() {
+  const next = state.deck[state.swipeIndex + 1];
+  if (next && next.poster_path) { const img = new Image(); img.src = poster500(next); }
+}
+
+/* ====================================================================
+   SCREEN: Swipe deck
+   ==================================================================== */
+function renderDeck() {
+  clearApp();
+
+  const total = state.deck.length;
+  const remaining = total - state.swipeIndex;
+
+  const s = el(`
+    <div class="screen active">
+      <div class="deck-head">
+        <span class="player-pill"><span class="dot"></span>${state.mode === 'duo' ? 'Your picks' : 'Player ' + state.player}</span>
+        <span class="deck-count">${remaining} of ${total} left</span>
+      </div>
+      <div class="deck" id="deck"></div>
+      <div class="deck-controls">
+        <button class="round-btn no" id="btn-no" aria-label="Skip">✗</button>
+        <button class="round-btn info" id="btn-info" aria-label="Details">ℹ︎</button>
+        <button class="round-btn yes" id="btn-yes" aria-label="Like">♥</button>
+      </div>
+    </div>
+  `);
+  app.appendChild(s);
+
+  const deck = s.querySelector('#deck');
+
+  // render up to 3 stacked cards (top is interactive, others peek behind)
+  const stackCount = Math.min(3, remaining);
+  for (let i = stackCount - 1; i >= 0; i--) {
+    const t = state.deck[state.swipeIndex + i];
+    const card = buildCard(t, i);
+    deck.appendChild(card);
+  }
+
+  const topCard = deck.querySelector('.card[data-depth="0"]');
+  if (topCard) {
+    attachDrag(topCard);
+    s.querySelector('#btn-no').onclick = function () { flyOut(topCard, 'left'); };
+    s.querySelector('#btn-yes').onclick = function () { flyOut(topCard, 'right'); };
+    s.querySelector('#btn-info').onclick = function () { topCard.classList.toggle('show-ov'); };
+    preloadNext();
+  }
+}
+
+function buildCard(t, depth) {
+  const hasPoster = !!t.poster_path;
+  const scale = 1 - depth * 0.05;
+  const translateY = depth * 14;       // peek down so the stack edge shows
+  const card = el(`
+    <div class="card ${depth === 0 ? 'swipable' : ''} ${hasPoster ? '' : 'no-poster'}"
+         data-depth="${depth}"
+         style="transform: translateY(${translateY}px) scale(${scale}); z-index:${10 - depth};">
+      <div class="skeleton"></div>
+      ${hasPoster ? `<img class="poster" alt="" />` : ''}
+      <div class="fallback">
+        <div class="ficon">🎞️</div>
+        <div class="ft">${esc(t.title)}</div>
+        <div class="fmeta">${badgeText(t)} · ${yearOf(t)}</div>
+      </div>
+      <div class="gradient"></div>
+      <div class="info">
+        <span class="badge">${badgeText(t)}</span>
+        <div class="title">${esc(t.title)}</div>
+        <div class="meta">
+          <span>${yearOf(t)}</span>
+          ${t.vote ? `<span class="star">★ ${t.vote}</span>` : ''}
+        </div>
+        <div class="ov">${esc(t.overview)}</div>
+      </div>
+      <div class="stamp like">LIKE</div>
+      <div class="stamp nope">NOPE</div>
+    </div>
+  `);
+
+  if (hasPoster) {
+    const img = card.querySelector('.poster');
+    img.onload = function () {
+      img.classList.add('loaded');
+      const sk = card.querySelector('.skeleton');
+      if (sk) sk.style.display = 'none';
+    };
+    img.onerror = function () {
+      // graceful fallback if the poster fails to load
+      card.classList.add('no-poster');
+      const sk = card.querySelector('.skeleton');
+      if (sk) sk.style.display = 'none';
+    };
+    img.src = poster500(t);
+  }
+  return card;
+}
+
+function badgeText(t) { return t.type === 'tv' ? 'Series' : 'Movie'; }
+
+/* ---------------- Drag / swipe mechanics ---------------- */
+function attachDrag(card) {
+  let startX = 0, startY = 0, dx = 0, dy = 0, dragging = false, pointerId = null;
+  const COMMIT = 95;     // px to commit a swipe decision
+  const likeStamp = card.querySelector('.stamp.like');
+  const nopeStamp = card.querySelector('.stamp.nope');
+
+  function down(x, y, id) {
+    dragging = true; startX = x; startY = y; dx = 0; dy = 0; pointerId = id;
+    card.style.transition = 'none';
+  }
+  function move(x, y) {
+    if (!dragging) return;
+    dx = x - startX; dy = y - startY;
+    const rot = dx / 18;                       // tilt proportional to drag
+    card.style.transform = `translate(${dx}px, ${dy}px) rotate(${rot}deg)`;
+    const intent = Math.min(Math.abs(dx) / COMMIT, 1);
+    likeStamp.style.opacity = dx > 0 ? intent : 0;
+    nopeStamp.style.opacity = dx < 0 ? intent : 0;
+  }
+  function up() {
+    if (!dragging) return;
+    dragging = false;
+    card.style.transition = 'transform 0.35s cubic-bezier(.2,.7,.3,1), opacity 0.35s';
+    if (Math.abs(dx) > COMMIT) {
+      flyOut(card, dx > 0 ? 'right' : 'left');
+    } else {
+      // snap back
+      card.style.transform = 'translateY(0) scale(1)';
+      likeStamp.style.opacity = 0;
+      nopeStamp.style.opacity = 0;
+    }
+  }
+
+  // Pointer events cover touch + mouse uniformly where available
+  if (window.PointerEvent) {
+    card.addEventListener('pointerdown', function (e) {
+      down(e.clientX, e.clientY, e.pointerId);
+      card.setPointerCapture(e.pointerId);
+    });
+    card.addEventListener('pointermove', function (e) { move(e.clientX, e.clientY); });
+    card.addEventListener('pointerup', up);
+    card.addEventListener('pointercancel', up);
+  } else {
+    // Fallback: touch + mouse listeners
+    card.addEventListener('touchstart', function (e) {
+      const t = e.touches[0]; down(t.clientX, t.clientY);
+    }, { passive: true });
+    card.addEventListener('touchmove', function (e) {
+      const t = e.touches[0]; move(t.clientX, t.clientY);
+    }, { passive: true });
+    card.addEventListener('touchend', up);
+
+    card.addEventListener('mousedown', function (e) { down(e.clientX, e.clientY); });
+    window.addEventListener('mousemove', function (e) { if (dragging) move(e.clientX, e.clientY); });
+    window.addEventListener('mouseup', up);
+  }
+}
+
+/* animate a card off-screen, record the decision, advance */
+let flying = false;
+function flyOut(card, dir) {
+  if (flying) return;            // guard against double-trigger
+  flying = true;
+  const liked = dir === 'right';
+  const t = state.deck[state.swipeIndex];
+  if (liked) state.likes[state.player].add(t.id);
+
+  card.style.transition = 'transform 0.4s ease, opacity 0.4s ease';
+  const x = dir === 'right' ? window.innerWidth : -window.innerWidth;
+  const rot = dir === 'right' ? 22 : -22;
+  card.style.transform = `translate(${x}px, 40px) rotate(${rot}deg)`;
+  card.style.opacity = '0';
+  (dir === 'right' ? card.querySelector('.stamp.like') : card.querySelector('.stamp.nope')).style.opacity = 1;
+
+  setTimeout(function () {
+    flying = false;
+    state.swipeIndex++;
+    if (state.swipeIndex >= state.deck.length) {
+      onPlayerFinished();
+    } else {
+      renderDeck();
+    }
+  }, 320);
+}
+
+function onPlayerFinished() {
+  if (state.mode === 'duo') {
+    // report my likes; the server reveals matches once both phones are done
+    wsSend({ t: 'done', likes: Array.from(state.likes[state.player]) });
+    renderWaiting('Waiting for your partner to finish swiping…');
+    return;
+  }
+  // SOLO pass-and-play
+  if (state.player === 1) {
+    state.player = 2;
+    state.swipeIndex = 0;
+    renderPassPhone();
+  } else {
+    computeMatches();
+  }
+}
+
+/* DUO: server-computed result arrives for both phones at once */
+function renderResult(m) {
+  if (m.kind === 'single') renderSingleMatch(m.matches[0]);
+  else if (m.kind === 'multi') renderMultiMatch(m.matches);
+  else renderNoMatch(m.miss || null);
+}
+
+/* ====================================================================
+   SCREEN: Pass the phone
+   ==================================================================== */
+function renderPassPhone() {
+  clearApp();
+  const s = el(`
+    <div class="screen active">
+      <div class="pass">
+        <div class="phone-emoji">📱</div>
+        <h2>Pass the phone</h2>
+        <p>Player 1 is done!<br/>Hand the phone to <b>Player 2</b> and don't peek at each other's picks.</p>
+        <button class="btn" id="ready">I'm Player 2 — let's go</button>
+      </div>
+    </div>
+  `);
+  app.appendChild(s);
+  s.querySelector('#ready').onclick = renderDeck;
+}
+
+/* ====================================================================
+   Compute matches
+   ==================================================================== */
+function computeMatches() {
+  const p1 = state.likes[1], p2 = state.likes[2];
+  const matchIds = Array.from(p1).filter(function (id) { return p2.has(id); });
+  const matches = matchIds.map(idToTitle).filter(Boolean);
+
+  if (matches.length === 1) {
+    renderSingleMatch(matches[0]);
+  } else if (matches.length > 1) {
+    renderMultiMatch(matches);
+  } else {
+    renderNoMatch();
+  }
+}
+function idToTitle(id) { return state.deck.find(function (t) { return t.id === id; }); }
+
+/* ====================================================================
+   SCREEN: Single match (celebrate)
+   ==================================================================== */
+function renderSingleMatch(t) {
+  clearApp();
+  const bg = poster780(t);
+  const s = el(`
+    <div class="screen active match-screen">
+      <div class="match-hero">
+        <div class="bg" ${bg ? `style="background-image:url('${bg}')"` : ''}></div>
+        <div class="scrim"></div>
+        <div class="top-banner"><small>It's a match!</small>You both swiped right ❤️</div>
+      </div>
+      <div class="match-body">
+        <h2>${esc(t.title)}</h2>
+        <div class="mmeta">
+          <span>${badgeText(t)}</span>
+          <span>${yearOf(t)}</span>
+          ${t.vote ? `<span class="star">★ ${t.vote}</span>` : ''}
+        </div>
+        <div class="synopsis">${esc(t.overview || 'No synopsis available.')}</div>
+        <div class="actions">
+          <a class="btn" id="trailer" target="_blank" rel="noopener">▶ Find the trailer</a>
+          <button class="btn btn-ghost" id="again">${state.mode === 'duo' ? '🔁 Pick again' : 'Start over'}</button>
+        </div>
+      </div>
+    </div>
+  `);
+  app.appendChild(s);
+  s.querySelector('#again').onclick = onAgain;
+  wireTrailer(s.querySelector('#trailer'), t);
+  fireConfetti();
+}
+
+/* "again" button: duo re-quizzes both phones; solo goes home */
+function onAgain() {
+  if (state.mode === 'duo') { wsSend({ t: 'restart' }); renderWaiting('Starting a new round…'); }
+  else renderStart();
+}
+
+/* resolve trailer link (server videos → YouTube; fallback to YouTube search) */
+async function wireTrailer(anchor, t) {
+  anchor.href = 'https://www.youtube.com/results?search_query=' +
+    encodeURIComponent(t.title + ' ' + yearOf(t) + ' trailer');
+  const url = await apiTrailer(t);
+  if (url) anchor.href = url;
+}
+
+/* ====================================================================
+   SCREEN: Multiple matches (chooser)
+   ==================================================================== */
+function renderMultiMatch(matches) {
+  clearApp();
+  const items = matches.map(function (t) {
+    const p = poster500(t);
+    const thumb = p
+      ? `<img src="${p}" alt="" />`
+      : `<div class="mini-fallback">${esc(t.title)}</div>`;
+    return `<button class="choose-item" data-id="${esc(t.id)}">
+              ${thumb}
+              <div>
+                <div class="ci-title">${esc(t.title)}</div>
+                <div class="ci-meta">${badgeText(t)} · ${yearOf(t)}${t.vote ? ' · ★ ' + t.vote : ''}</div>
+              </div>
+            </button>`;
+  }).join('');
+
+  const s = el(`
+    <div class="screen active">
+      <div style="text-align:center;margin:6px 0 4px">
+        <div style="font-size:13px;letter-spacing:2px;color:var(--accent);font-weight:700;text-transform:uppercase">${matches.length} Matches!</div>
+        <h2 style="font-size:28px;margin:6px 0 2px">You both liked these</h2>
+        <p style="color:var(--cream-dim);font-size:14px;margin:0 0 4px">Pick one to watch tonight.</p>
+      </div>
+      <div class="chooser-list" style="overflow-y:auto;flex:1;padding:4px 2px">${items}</div>
+      <button class="btn btn-ghost" id="again" style="margin-top:12px">${state.mode === 'duo' ? '🔁 Pick again' : 'Start over'}</button>
+    </div>
+  `);
+  app.appendChild(s);
+  fireConfetti();
+  s.querySelectorAll('.choose-item').forEach(function (btn) {
+    btn.onclick = function () {
+      const id = btn.getAttribute('data-id');
+      // in duo, broadcast the pick so both phones land on the same title
+      if (state.mode === 'duo') wsSend({ t: 'pick', titleId: id });
+      else renderSingleMatch(idToTitle(id));
+    };
+  });
+  s.querySelector('#again').onclick = onAgain;
+}
+
+/* ====================================================================
+   SCREEN: No match (closest miss + re-swipe)
+   ==================================================================== */
+function renderNoMatch(serverMiss) {
+  clearApp();
+
+  // SOLO computes the closest miss locally; DUO receives it from the server.
+  let miss = serverMiss;
+  if (miss === undefined) {
+    const likedByEither = state.deck.filter(function (t) {
+      return state.likes[1].has(t.id) || state.likes[2].has(t.id);
+    });
+    likedByEither.sort(function (a, b) { return (b.vote || 0) - (a.vote || 0); });
+    miss = likedByEither[0] || null;
+  }
+
+  const missHtml = miss ? (function () {
+    const p = poster500(miss);
+    const thumb = p ? `<img src="${p}" alt="" />` : `<div class="mini-fallback">${esc(miss.title)}</div>`;
+    return `<div class="miss-card">
+              ${thumb}
+              <div>
+                <div class="mc-label">Closest miss</div>
+                <div class="mc-title">${esc(miss.title)}</div>
+                <div class="mc-meta">${badgeText(miss)} · ${yearOf(miss)}${miss.vote ? ' · ★ ' + miss.vote : ''}<br/>One of you liked this one.</div>
+              </div>
+            </div>`;
+  })() : '';
+
+  const s = el(`
+    <div class="screen active">
+      <div class="nomatch">
+        <div class="x">🙈</div>
+        <h2>No match… yet</h2>
+        <p>You didn't both swipe right on anything. Want to go again on the ones that were close?</p>
+        ${missHtml}
+        <div class="center-actions">
+          <button class="btn" id="reswipe">🔁 Re-swipe round</button>
+          <button class="btn btn-ghost" id="again">${state.mode === 'duo' ? 'New quiz' : 'New quiz'}</button>
+        </div>
+      </div>
+    </div>
+  `);
+  app.appendChild(s);
+  s.querySelector('#again').onclick = onAgain;
+  s.querySelector('#reswipe').onclick = function () {
+    if (state.mode === 'duo') { wsSend({ t: 'reswipe' }); renderWaiting('Re-shuffling the near-misses…'); }
+    else startReSwipe();
+  };
+}
+
+/* SOLO re-swipe: rebuild the deck from near-misses (liked by exactly one),
+   or reshuffle the whole deck if there were none. (DUO does this server-side.) */
+function startReSwipe() {
+  const nearMiss = state.deck.filter(function (t) {
+    const a = state.likes[1].has(t.id), b = state.likes[2].has(t.id);
+    return (a || b) && !(a && b);
+  });
+  let newDeck = nearMiss.length >= 2 ? nearMiss : state.deck.slice();
+  shuffle(newDeck);
+  state.deck = newDeck;
+  startSwipeSession();
+}
+
+/* ====================================================================
+   Confetti
+   ==================================================================== */
+function fireConfetti() {
+  const layer = document.getElementById('confetti');
+  layer.innerHTML = '';
+  layer.classList.add('on');
+  const colors = ['#C0392B', '#F0EAD6', '#ffd35b', '#2ecc71', '#e74c3c', '#ffffff'];
+  const N = 90;
+  for (let i = 0; i < N; i++) {
+    const c = document.createElement('div');
+    c.className = 'conf';
+    c.style.left = Math.random() * 100 + 'vw';
+    c.style.background = colors[Math.floor(Math.random() * colors.length)];
+    c.style.animationDuration = (1.8 + Math.random() * 1.8) + 's';
+    c.style.animationDelay = (Math.random() * 0.5) + 's';
+    c.style.transform = 'rotate(' + (Math.random() * 360) + 'deg)';
+    c.style.opacity = 0.9;
+    layer.appendChild(c);
+  }
+  setTimeout(function () { layer.classList.remove('on'); layer.innerHTML = ''; }, 4200);
+}
+
+/* ====================================================================
+   Boot
+   ==================================================================== */
+renderStart();
+</script>
+</body>
+</html>
