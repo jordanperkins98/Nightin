@@ -125,6 +125,9 @@ function buildParams(spec, type, relax) {
     p.set('with_watch_providers', spec.providerIds.join('|'));
     p.set('watch_region', REGION);
   }
+  // "Anything" with no specific streaming service → general English-language
+  // pool suited to the GB/US region, dropped on the last-resort relax pass
+  if (spec.anything && relax < 2) p.set('with_original_language', 'en');
   return p;
 }
 
@@ -349,24 +352,31 @@ async function fetchDeck(answerList) {
   }
   tmdbPool.forEach(function (t) { t.availability = availabilityFor(t); });
 
-  // 2) downloaded library matches (server-first), merged + de-duped —
-  //    only when the server is in play (Jordan's Server / Anything / no pick)
+  // 2) downloaded library matches (server-first), merged + de-duped.
+  //    "Jordan's Server" explicitly chosen → always pull in the library.
+  //    "Anything" → only pull in the *whole* library when it's relevant to
+  //    the picked mood (a genre is actually in play); otherwise downloaded
+  //    titles still surface naturally via tmdbPool's availability tag.
   const byId = new Map();
-  if (spec.wantsServer || spec.anything) {
+  if (spec.wantsServer || (spec.anything && wantedGenreNames(spec).size > 0)) {
     libraryMatches(spec, false).forEach(function (t) { if (!byId.has(t.id)) byId.set(t.id, t); });
   }
   tmdbPool.forEach(function (t) { if (!byId.has(t.id)) byId.set(t.id, t); });
   const all = Array.from(byId.values());
 
-  // 3) downloaded first (in swipe order), then downloadable; prefer posters in the tail
+  // 3) downloaded first (in swipe order), then downloadable; prefer posters in the tail.
+  // Only give server content the lion's share of the deck when "Jordan's Server"
+  // was explicitly picked — otherwise it's "anything available to download" first,
+  // with relevant server titles mixed in rather than dominating.
   const downloaded = shuffle(all.filter(function (t) { return t.availability === 'downloaded'; }));
   const rest = shuffle(all.filter(function (t) { return t.availability !== 'downloaded'; }));
   rest.sort(function (a, b) { return (b.poster_path ? 1 : 0) - (a.poster_path ? 1 : 0); });
 
+  const downloadedCap = spec.wantsServer ? 14 : 6;
   const deck = [];
-  downloaded.slice(0, 14).forEach(function (t) { deck.push(t); });          // leave room for discovery
+  downloaded.slice(0, downloadedCap).forEach(function (t) { deck.push(t); });
   for (const t of rest) { if (deck.length >= 18) break; deck.push(t); }
-  for (const t of downloaded.slice(14)) { if (deck.length >= 18) break; deck.push(t); }
+  for (const t of downloaded.slice(downloadedCap)) { if (deck.length >= 18) break; deck.push(t); }
   return deck.slice(0, 18);
 }
 
