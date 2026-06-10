@@ -797,8 +797,7 @@ async function renderTrending() {
 
   clearApp();
   const items = titles.map(function (t, i) {
-    const p = poster500(t);
-    const thumb = p ? `<img src="${p}" alt="" loading="lazy" />` : `<div class="mini-fallback">${esc(t.title)}</div>`;
+    const thumb = posterThumb(t);
     const onServer = t.availability === 'downloaded';
     const canDl = t.availability === 'available' || t.availability === 'library';
     return `<div class="trend-item" data-i="${i}">
@@ -825,6 +824,7 @@ async function renderTrending() {
     </div>
   `);
   app.appendChild(s);
+  wireThumbFallbacks(s);
   s.querySelector('#back').onclick = renderStart;
   s.querySelectorAll('.trend-item').forEach(function (item) {
     const t = titles[Number(item.getAttribute('data-i'))];
@@ -1144,6 +1144,24 @@ function startDuoSwipe() {
 
 function poster500(t) { return t.poster_path ? IMG_W500 + t.poster_path : null; }
 function poster780(t) { return t.poster_path ? IMG_W780 + t.poster_path : null; }
+
+/* small poster thumbnail (trending/chooser/miss-card): falls back to a title
+   placeholder if there's no poster_path, or if the image fails to load */
+function posterThumb(t) {
+  const p = poster500(t);
+  return p ? `<img class="thumb" data-title="${esc(t.title)}" src="${p}" alt="" loading="lazy" />`
+           : `<div class="mini-fallback">${esc(t.title)}</div>`;
+}
+function wireThumbFallbacks(root) {
+  root.querySelectorAll('img.thumb').forEach(function (img) {
+    img.onerror = function () {
+      const div = document.createElement('div');
+      div.className = 'mini-fallback';
+      div.textContent = img.dataset.title;
+      img.replaceWith(div);
+    };
+  });
+}
 
 /* preload the next card's poster so the next swipe feels instant */
 function preloadNext() {
@@ -1499,10 +1517,7 @@ async function wireTrailer(anchor, t) {
 function renderMultiMatch(matches) {
   clearApp();
   const items = matches.map(function (t) {
-    const p = poster500(t);
-    const thumb = p
-      ? `<img src="${p}" alt="" />`
-      : `<div class="mini-fallback">${esc(t.title)}</div>`;
+    const thumb = posterThumb(t);
     return `<div class="choose-item" role="button" data-id="${esc(t.id)}">
               ${thumb}
               <div style="flex:1;min-width:0">
@@ -1526,6 +1541,7 @@ function renderMultiMatch(matches) {
     </div>
   `);
   app.appendChild(s);
+  wireThumbFallbacks(s);
   fireConfetti();
   s.querySelectorAll('.choose-item').forEach(function (item) {
     const id = item.getAttribute('data-id');
@@ -1561,8 +1577,7 @@ function renderNoMatch(serverMiss) {
   }
 
   const missHtml = miss ? (function () {
-    const p = poster500(miss);
-    const thumb = p ? `<img src="${p}" alt="" />` : `<div class="mini-fallback">${esc(miss.title)}</div>`;
+    const thumb = posterThumb(miss);
     return `<div class="miss-card">
               ${thumb}
               <div>
@@ -1588,6 +1603,7 @@ function renderNoMatch(serverMiss) {
     </div>
   `);
   app.appendChild(s);
+  wireThumbFallbacks(s);
   s.querySelector('#again').onclick = onAgain;
   s.querySelector('#reswipe').onclick = function () {
     if (state.mode === 'duo') { wsSend({ t: 'reswipe' }); renderWaiting('Re-shuffling the near-misses…'); }

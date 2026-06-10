@@ -205,6 +205,22 @@ function posterPathFromImages(images) {
   return m ? m[1] : null;
 }
 
+// Sonarr's poster artwork comes from TheTVDB (not TMDB), so posterPathFromImages
+// always misses for series — fall back to TMDB's own poster_path, cached forever
+// since it never changes for an existing title.
+const tmdbPosterCache = new Map(); // 'tv-123' -> poster_path | null
+async function tmdbPosterPath(type, tmdbId) {
+  const ck = type + '-' + tmdbId;
+  if (tmdbPosterCache.has(ck)) return tmdbPosterCache.get(ck);
+  let p = null;
+  try {
+    const data = await (await fetch(TMDB_BASE + '/' + type + '/' + tmdbId + '?api_key=' + API_KEY)).json();
+    p = data.poster_path || null;
+  } catch (e) {}
+  tmdbPosterCache.set(ck, p);
+  return p;
+}
+
 // cached library snapshots (refreshed lazily every few minutes)
 const lib = { radarr: null, sonarr: null, ts: 0 };
 const LIB_TTL = 5 * 60 * 1000;
@@ -233,18 +249,20 @@ async function refreshLibrary() {
     try {
       const series = await arrFetch(SONARR.url, SONARR.key, '/api/v3/series');
       const byTmdb = new Map(), byTitle = new Map(), list = [];
-      (series || []).forEach(function (s) {
+      for (const s of (series || [])) {
         const epFiles = s.statistics ? (s.statistics.episodeFileCount || 0) : 0;
+        let poster = posterPathFromImages(s.images);
+        if (!poster && epFiles > 0 && s.tmdbId) poster = await tmdbPosterPath('tv', s.tmdbId);
         const e = {
           id: s.id, tmdbId: s.tmdbId || null, tvdbId: s.tvdbId || null, title: s.title, year: s.year,
           hasFile: epFiles > 0, monitored: !!s.monitored, genres: s.genres || [],
-          overview: s.overview || '', poster_path: posterPathFromImages(s.images),
+          overview: s.overview || '', poster_path: poster,
           vote: s.ratings && s.ratings.value ? Math.round(s.ratings.value * 10) / 10 : null
         };
         if (s.tmdbId) byTmdb.set(s.tmdbId, e);
         byTitle.set((s.title || '').toLowerCase() + '|' + (s.year || ''), e);
         list.push(e);
-      });
+      }
       lib.sonarr = { byTmdb: byTmdb, byTitle: byTitle, list: list };
     } catch (e) { failed = true; console.warn('[Sonarr] refresh failed:', e.message); }
   }
@@ -357,11 +375,14 @@ async function fetchDeck(answerList) {
   //    "Anything" → only pull in the *whole* library when it's relevant to
   //    the picked mood (a genre is actually in play); otherwise downloaded
   //    titles still surface naturally via tmdbPool's availability tag.
+  //    TMDB entries go in first (reliable poster_path/overview, already
+  //    tagged 'downloaded' via availabilityFor); library matches only fill
+  //    in downloaded titles that TMDB discover didn't surface.
   const byId = new Map();
+  tmdbPool.forEach(function (t) { byId.set(t.id, t); });
   if (spec.wantsServer || (spec.anything && wantedGenreNames(spec).size > 0)) {
     libraryMatches(spec, false).forEach(function (t) { if (!byId.has(t.id)) byId.set(t.id, t); });
   }
-  tmdbPool.forEach(function (t) { if (!byId.has(t.id)) byId.set(t.id, t); });
   const all = Array.from(byId.values());
 
   // 3) downloaded first (in swipe order), then downloadable; prefer posters in the tail.
