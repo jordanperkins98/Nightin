@@ -8,8 +8,14 @@ watch?"
 - **Two-phone mode** — room code, each does their own quiz, live-synced deck & matches.
 - **Same-phone mode** — pass-and-play on one device (shared quiz, take turns swiping).
 - No accounts, no database. The TMDB key lives only on the server.
-- Cartoons & anime are filtered out. Streaming filter: **Netflix**, **Prime**, or
-  **Anything (Jordan's Server)** = no filter.
+- Cartoons & anime are filtered out. Streaming filter: **Netflix**, **Prime**,
+  **Jordan's Server** (only what's downloaded on the NAS), or **Anything** = no filter.
+- **🔥 Trending in cinemas** — latest theatrical releases on the start screen,
+  each with a trailer link and one-tap download-to-Radarr.
+- Optional **Rotten Tomatoes 🍅** scores (set `OMDB_API_KEY`) on cards, matches
+  and trending.
+- In a multi-match result every title has its own ▶ trailer button — preview
+  them all before you pick.
 
 ## How it works
 
@@ -49,6 +55,17 @@ SONARR_API_KEY=...        # Sonarr → Settings → General → API Key
 Use the NAS **LAN IP**, not `localhost`, so the container can reach them. Leave
 unset and the app behaves exactly as before (plain TMDB picks, no badges). New
 downloads use each app's **first** quality profile and root folder.
+
+### Optional: Rotten Tomatoes scores & region
+
+```
+OMDB_API_KEY=...   # free key from https://www.omdbapi.com/apikey.aspx
+TMDB_REGION=GB     # cinema listings + streaming availability region (default US)
+```
+
+With an OMDb key set, cards, match screens and the trending list show the
+🍅 Rotten Tomatoes score next to the TMDB ★ rating (cached server-side, so the
+free 1 000-requests/day tier goes a long way).
 
 ## Deploy on Synology / Portainer (prebuilt image — no NAS-side build)
 

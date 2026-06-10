@@ -18,3 +18,7 @@ services:
       - RADARR_API_KEY=${RADARR_API_KEY:-}
       - SONARR_URL=${SONARR_URL:-}
       - SONARR_API_KEY=${SONARR_API_KEY:-}
+      # Optional — Rotten Tomatoes scores via OMDb (free key: omdbapi.com/apikey.aspx)
+      - OMDB_API_KEY=${OMDB_API_KEY:-}
+      # Region for cinema listings & streaming availability (e.g. GB, US)
+      - TMDB_REGION=${TMDB_REGION:-US}

@@ -353,6 +353,43 @@
   .ci-avail.on { background: #1f7a4533; color: #4cd787; }
   .ci-avail.dl { background: #ffffff14; color: var(--cream-dim); }
 
+  /* Rotten Tomatoes badge (filled in async once the server answers) */
+  .rt-badge { color: #fa6a4d; font-weight: 700; white-space: nowrap; }
+
+  /* per-match trailer button in the chooser */
+  .ci-trailer {
+    flex: none; width: 42px; height: 42px; border-radius: 50%;
+    display: grid; place-items: center; text-decoration: none;
+    background: #ffffff10; border: 1px solid #ffffff1f;
+    color: var(--cream); font-size: 15px;
+  }
+  .ci-trailer:active { background: var(--accent); }
+
+  /* ===================== Trending ===================== */
+  .trend-list { display: grid; gap: 12px; overflow-y: auto; flex: 1; min-height: 0; padding: 2px; }
+  .trend-item {
+    display: flex; gap: 14px;
+    background: var(--bg-soft); border: 1.5px solid #ffffff14;
+    border-radius: 14px; padding: 10px;
+  }
+  .trend-item img, .trend-item .mini-fallback {
+    width: 64px; height: 94px; border-radius: 9px; object-fit: cover; flex: none;
+    background: linear-gradient(160deg,#241a1c,#0f0f12);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: var(--cream-dim); text-align: center; padding: 4px;
+  }
+  .ti-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .ti-actions { margin-top: auto; padding-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .mini-btn {
+    font-size: 12.5px; font-weight: 600; text-decoration: none;
+    padding: 7px 12px; border-radius: 99px;
+    background: #ffffff10; border: 1px solid #ffffff1f; color: var(--cream);
+  }
+  .mini-btn:active { background: #ffffff22; }
+  .mini-btn.dl { background: var(--accent); border-color: transparent; color: #fff; }
+  .mini-btn.btn-done { background: #1f7a45; border-color: transparent; color: #d6ffe6; }
+  .mini-btn:disabled { opacity: 0.6; }
+
   /* swipe stamps */
   .card .stamp {
     position: absolute; top: 26px;
@@ -535,7 +572,8 @@ const QUESTIONS = [
       { v: 'Laugh',   label: 'Laugh',   emoji: '😂', sub: 'Make us grin' },
       { v: 'Cry',     label: 'Cry',     emoji: '😭', sub: 'Hit us in the feels' },
       { v: 'Thrills', label: 'Thrills', emoji: '😱', sub: 'Edge of the seat' },
-      { v: 'Think',   label: 'Think',   emoji: '🧠', sub: 'Smart & slow-burn' }
+      { v: 'Think',   label: 'Think',   emoji: '🧠', sub: 'Smart & slow-burn' },
+      { v: 'Any',     label: 'Surprise us', emoji: '🎲', sub: 'No preference' }
     ]
   },
   {
@@ -543,7 +581,8 @@ const QUESTIONS = [
     opts: [
       { v: 'short',  label: 'Under 90 mins', emoji: '⏱️', sub: 'A quick movie' },
       { v: 'movie',  label: 'A movie',       emoji: '🎬', sub: 'Standard feature' },
-      { v: 'series', label: 'Binge a series', emoji: '📺', sub: 'TV episodes' }
+      { v: 'series', label: 'Binge a series', emoji: '📺', sub: 'TV episodes' },
+      { v: 'any',    label: "Don't mind",    emoji: '🤷', sub: 'Movie or series' }
     ]
   },
   {
@@ -563,7 +602,8 @@ const QUESTIONS = [
     opts: [
       { v: 'zombie', label: 'Sofa zombie', emoji: '🧟', sub: 'Light & easy' },
       { v: 'light',  label: 'Lightly engaged', emoji: '🙂', sub: 'Half watching' },
-      { v: 'full',   label: 'Full attention', emoji: '🤓', sub: 'Bring complexity' }
+      { v: 'full',   label: 'Full attention', emoji: '🤓', sub: 'Bring complexity' },
+      { v: 'any',    label: "Don't mind", emoji: '🤷', sub: 'Whatever works' }
     ]
   },
   {
@@ -580,7 +620,8 @@ const QUESTIONS = [
     opts: [
       { v: 'Netflix', label: 'Netflix', emoji: '🔴' },
       { v: 'Prime',   label: 'Prime',   emoji: '🔵' },
-      { v: 'any',     label: 'Anything', emoji: '🏠', sub: "Jordan's Server" }
+      { v: 'server',  label: "Jordan's Server", emoji: '🏠', sub: 'Only what’s downloaded' },
+      { v: 'any',     label: 'Anything', emoji: '♾️', sub: 'No filter' }
     ]
   }
 ];
@@ -687,6 +728,7 @@ function renderStart() {
       <div class="start-actions">
         <button class="btn" id="duo">🎬 Play on two phones</button>
         <button class="btn btn-ghost" id="solo">📱 Same phone — pass &amp; play</button>
+        <button class="btn btn-ghost" id="trending">🔥 Trending in cinemas</button>
         <button class="link" id="lucky">🎲 Feeling lucky — surprise us</button>
       </div>
     </div>
@@ -694,6 +736,7 @@ function renderStart() {
   app.appendChild(s);
   s.querySelector('#duo').onclick = renderRoomChoice;
   s.querySelector('#solo').onclick = function () { state.mode = 'solo'; startQuiz(); };
+  s.querySelector('#trending').onclick = renderTrending;
   s.querySelector('#lucky').onclick = feelingLucky;
 }
 
@@ -718,6 +761,65 @@ function feelingLucky() {
     services: ['any']
   };
   fetchSoloDeck();
+}
+
+/* ====================================================================
+   SCREEN: Trending — films in cinemas right now, one-tap download
+   ==================================================================== */
+async function renderTrending() {
+  renderLoading();
+  let titles = [];
+  try {
+    const res = await fetch(API_BASE + '/api/trending');
+    if (!res.ok) {
+      let msg = 'Server error (' + res.status + ')';
+      try { msg = (await res.json()).error || msg; } catch (e) {}
+      throw new Error(msg);
+    }
+    titles = (await res.json()).titles || [];
+  } catch (e) {
+    renderError(e.message || 'Could not load trending films.');
+    return;
+  }
+  if (!titles.length) { renderError('Nothing trending right now — try again later.'); return; }
+
+  clearApp();
+  const items = titles.map(function (t, i) {
+    const p = poster500(t);
+    const thumb = p ? `<img src="${p}" alt="" loading="lazy" />` : `<div class="mini-fallback">${esc(t.title)}</div>`;
+    const onServer = t.availability === 'downloaded';
+    const canDl = t.availability === 'available' || t.availability === 'library';
+    return `<div class="trend-item" data-i="${i}">
+              ${thumb}
+              <div class="ti-body">
+                <div class="ci-title">${esc(t.title)}</div>
+                <div class="ci-meta">${yearOf(t)}${t.vote ? ' · ★ ' + t.vote : ''} <span class="rt-badge" style="display:none"></span></div>
+                <div class="ti-actions">
+                  <a class="mini-btn ti-trailer" target="_blank" rel="noopener">▶ Trailer</a>
+                  ${onServer ? `<span class="ci-avail on">▶ On your server</span>` : ''}
+                  ${canDl ? `<button class="mini-btn dl ti-dl">⬇ Download</button>` : ''}
+                </div>
+              </div>
+            </div>`;
+  }).join('');
+
+  const s = el(`
+    <div class="screen active">
+      <button class="link back-top" id="back">‹ Back</button>
+      <h2 style="font-size:26px;margin:2px 0 4px">🔥 Trending in cinemas</h2>
+      <p style="color:var(--cream-dim);font-size:14px;margin:0 0 12px">The latest films out now — grab one for your server.</p>
+      <div class="trend-list">${items}</div>
+    </div>
+  `);
+  app.appendChild(s);
+  s.querySelector('#back').onclick = renderStart;
+  s.querySelectorAll('.trend-item').forEach(function (item) {
+    const t = titles[Number(item.getAttribute('data-i'))];
+    wireTrailer(item.querySelector('.ti-trailer'), t);
+    loadRT(item.querySelector('.rt-badge'), t);
+    const dl = item.querySelector('.ti-dl');
+    if (dl) dl.onclick = function () { sendToServer(dl, t); };
+  });
 }
 
 /* ====================================================================
@@ -900,6 +1002,23 @@ async function apiTrailer(title) {
     if (!res.ok) return null;
     return (await res.json()).url || null;
   } catch (e) { return null; }
+}
+
+/* Rotten Tomatoes score — fills a hidden .rt-badge span once the server
+   answers (no-op when OMDb isn't configured / no score exists). */
+const rtScores = new Map();   // title.id -> '85%' | null
+async function loadRT(span, t) {
+  if (!span) return;
+  const apply = function (rt) {
+    if (rt && span.isConnected) { span.textContent = '🍅 ' + rt; span.style.display = ''; }
+  };
+  if (rtScores.has(t.id)) { apply(rtScores.get(t.id)); return; }
+  try {
+    const res = await fetch(API_BASE + '/api/ratings?type=' + t.type + '&id=' + t.tmdbId);
+    const data = await res.json();
+    rtScores.set(t.id, data.rt || null);
+    apply(data.rt);
+  } catch (e) {}
 }
 
 /* SOLO / pass-and-play: this device fetches the deck for one answer set */
@@ -1087,6 +1206,7 @@ function buildCard(t, depth) {
         <div class="meta">
           <span>${yearOf(t)}</span>
           ${t.vote ? `<span class="star">★ ${t.vote}</span>` : ''}
+          <span class="rt-badge" style="display:none"></span>
         </div>
         <div class="ov">${esc(t.overview)}</div>
       </div>
@@ -1110,6 +1230,7 @@ function buildCard(t, depth) {
     };
     img.src = poster500(t);
   }
+  loadRT(card.querySelector('.rt-badge'), t);
   return card;
 }
 
@@ -1292,6 +1413,7 @@ function renderSingleMatch(t) {
           <span>${badgeText(t)}</span>
           <span>${yearOf(t)}</span>
           ${t.vote ? `<span class="star">★ ${t.vote}</span>` : ''}
+          <span class="rt-badge" style="display:none"></span>
         </div>
         <div class="synopsis">${esc(t.overview || 'No synopsis available.')}</div>
         ${serverStatusHtml(t)}
@@ -1307,6 +1429,7 @@ function renderSingleMatch(t) {
   app.appendChild(s);
   s.querySelector('#again').onclick = onAgain;
   wireTrailer(s.querySelector('#trailer'), t);
+  loadRT(s.querySelector('.rt-badge'), t);
   const dl = s.querySelector('#download');
   if (dl) dl.onclick = function () { sendToServer(dl, t); };
   fireConfetti();
@@ -1367,14 +1490,15 @@ function renderMultiMatch(matches) {
     const thumb = p
       ? `<img src="${p}" alt="" />`
       : `<div class="mini-fallback">${esc(t.title)}</div>`;
-    return `<button class="choose-item" data-id="${esc(t.id)}">
+    return `<div class="choose-item" role="button" data-id="${esc(t.id)}">
               ${thumb}
-              <div>
+              <div style="flex:1;min-width:0">
                 <div class="ci-title">${esc(t.title)}</div>
-                <div class="ci-meta">${badgeText(t)} · ${yearOf(t)}${t.vote ? ' · ★ ' + t.vote : ''}</div>
+                <div class="ci-meta">${badgeText(t)} · ${yearOf(t)}${t.vote ? ' · ★ ' + t.vote : ''} <span class="rt-badge" style="display:none"></span></div>
                 ${availInfo(t) ? `<div class="ci-avail ${availInfo(t).cls}">${availInfo(t).label}</div>` : ''}
               </div>
-            </button>`;
+              <a class="ci-trailer" target="_blank" rel="noopener" aria-label="Watch trailer">▶</a>
+            </div>`;
   }).join('');
 
   const s = el(`
@@ -1382,7 +1506,7 @@ function renderMultiMatch(matches) {
       <div style="text-align:center;margin:6px 0 4px">
         <div style="font-size:13px;letter-spacing:2px;color:var(--accent);font-weight:700;text-transform:uppercase">${matches.length} Matches!</div>
         <h2 style="font-size:28px;margin:6px 0 2px">You both liked these</h2>
-        <p style="color:var(--cream-dim);font-size:14px;margin:0 0 4px">Pick one to watch tonight.</p>
+        <p style="color:var(--cream-dim);font-size:14px;margin:0 0 4px">Tap ▶ to watch a trailer, tap a card to pick it.</p>
       </div>
       <div class="chooser-list" style="overflow-y:auto;flex:1;padding:4px 2px">${items}</div>
       <button class="btn btn-ghost" id="again" style="margin-top:12px">${state.mode === 'duo' ? '🔁 Pick again' : 'Start over'}</button>
@@ -1390,12 +1514,18 @@ function renderMultiMatch(matches) {
   `);
   app.appendChild(s);
   fireConfetti();
-  s.querySelectorAll('.choose-item').forEach(function (btn) {
-    btn.onclick = function () {
-      const id = btn.getAttribute('data-id');
+  s.querySelectorAll('.choose-item').forEach(function (item) {
+    const id = item.getAttribute('data-id');
+    const t = matches.find(function (m) { return m.id === id; }) || idToTitle(id);
+    // trailer link: opens YouTube without committing to the pick
+    const tr = item.querySelector('.ci-trailer');
+    wireTrailer(tr, t);
+    tr.onclick = function (e) { e.stopPropagation(); };
+    loadRT(item.querySelector('.rt-badge'), t);
+    item.onclick = function () {
       // in duo, broadcast the pick so both phones land on the same title
       if (state.mode === 'duo') wsSend({ t: 'pick', titleId: id });
-      else renderSingleMatch(idToTitle(id));
+      else renderSingleMatch(t);
     };
   });
   s.querySelector('#again').onclick = onAgain;

@@ -37,9 +37,11 @@ const VIBE_MAP = {
   Laugh:   { add: ['Comedy'],                          sort: 'popularity.desc',   minVotes: 100 },
   Cry:     { add: ['Drama', 'Romance'],                sort: 'popularity.desc',   minVotes: 150 },
   Thrills: { add: ['Thriller', 'Horror', 'Action'],    sort: 'popularity.desc',   minVotes: 150 },
-  Think:   { add: ['Drama', 'Mystery', 'Documentary'], sort: 'vote_average.desc', minVotes: 350 }
+  Think:   { add: ['Drama', 'Mystery', 'Documentary'], sort: 'vote_average.desc', minVotes: 350 },
+  Any:     { add: [],                                  sort: 'popularity.desc',   minVotes: 150 }
 };
 const PROVIDERS = { Netflix: 8, 'Prime': 9 };
+const REGION = process.env.TMDB_REGION || 'US';
 const EXCLUDE_GENRES = '16'; // 16 = Animation (cartoons & anime) — always excluded
 
 /* =========================================================================
@@ -55,7 +57,9 @@ function computeSpec(list) {
     (a.genres || []).forEach(function (g) { genres.add(g); });
     const v = VIBE_MAP[a.vibe] || VIBE_MAP.Chill;
     v.add.forEach(function (g) { added.add(g); });
-    if (a.length === 'series') formats.add('tv'); else formats.add('movie');
+    if (a.length === 'series') formats.add('tv');
+    else if (a.length === 'any') { formats.add('movie'); formats.add('tv'); }
+    else formats.add('movie');
     if (a.length === 'short') runtimeLte = 90;
     else if (a.energy === 'zombie' && runtimeLte == null) runtimeLte = 115;
     eras.add(a.era || 'any');
@@ -72,17 +76,23 @@ function computeSpec(list) {
   // era: only constrain when both pick the same (non-"any") era
   const era = eras.size === 1 ? Array.from(eras)[0] : 'any';
 
-  // "any" (Jordan's Server) → no provider restriction
-  const wantsAny = services.has('any');
-  const providerIds = wantsAny ? [] :
+  // services: 'any' (or nothing picked) → no filter at all;
+  // 'server' (Jordan's Server) → include/limit to what's downloaded on the NAS;
+  // named providers (Netflix/Prime) → TMDB watch-provider filter.
+  const anything = services.has('any') || services.size === 0;
+  const wantsServer = services.has('server');
+  const providerIds = anything ? [] :
     Array.from(services).map(function (s) { return PROVIDERS[s]; }).filter(Boolean);
+  const serverOnly = !anything && wantsServer && providerIds.length === 0;
 
   return {
     genres: Array.from(genres),
     added: Array.from(added),
     formats: Array.from(formats),
     runtimeLte: runtimeLte,
-    sort: sort, minVotes: minVotes, era: era, providerIds: providerIds
+    sort: sort, minVotes: minVotes, era: era,
+    providerIds: providerIds, anything: anything,
+    wantsServer: wantsServer, serverOnly: serverOnly
   };
 }
 
@@ -113,7 +123,7 @@ function buildParams(spec, type, relax) {
   if (dateLte) p.set(type === 'movie' ? 'primary_release_date.lte' : 'first_air_date.lte', dateLte);
   if (spec.providerIds.length && relax < 2) {
     p.set('with_watch_providers', spec.providerIds.join('|'));
-    p.set('watch_region', 'US');
+    p.set('watch_region', REGION);
   }
   return p;
 }
@@ -273,10 +283,10 @@ function eraOk(year, era) {
 }
 
 // downloaded library items matching tonight's mood, as deck-shaped titles
-function libraryMatches(spec) {
+function libraryMatches(spec, ignoreGenres) {
   const out = [];
   const names = wantedGenreNames(spec);
-  const needGenre = names.size > 0;
+  const needGenre = !ignoreGenres && names.size > 0;
   const matchGenre = function (genres) { return genres.some(function (g) { return names.has((g || '').toLowerCase()); }); };
 
   if (spec.formats.includes('movie') && radarrOn() && lib.radarr) {
@@ -314,6 +324,14 @@ async function fetchDeck(answerList) {
   const spec = computeSpec(answerList);
   await refreshLibrary().catch(function () {});
 
+  // "Jordan's Server" only → deck comes purely from what's downloaded;
+  // drop the genre filter if the mood-matched slice is too thin
+  if (spec.serverOnly) {
+    let mine = libraryMatches(spec, false);
+    if (mine.length < 4) mine = libraryMatches(spec, true);
+    return shuffle(mine).slice(0, 18);
+  }
+
   // 1) TMDB discovery pool (with relaxation), annotated with server availability
   let tmdbPool = [];
   for (let relax = 0; relax <= 2; relax++) {
@@ -328,9 +346,12 @@ async function fetchDeck(answerList) {
   }
   tmdbPool.forEach(function (t) { t.availability = availabilityFor(t); });
 
-  // 2) downloaded library matches (server-first), merged + de-duped
+  // 2) downloaded library matches (server-first), merged + de-duped —
+  //    only when the server is in play (Jordan's Server / Anything / no pick)
   const byId = new Map();
-  libraryMatches(spec).forEach(function (t) { if (!byId.has(t.id)) byId.set(t.id, t); });
+  if (spec.wantsServer || spec.anything) {
+    libraryMatches(spec, false).forEach(function (t) { if (!byId.has(t.id)) byId.set(t.id, t); });
+  }
   tmdbPool.forEach(function (t) { if (!byId.has(t.id)) byId.set(t.id, t); });
   const all = Array.from(byId.values());
 
@@ -400,6 +421,57 @@ async function addSeries(tmdbId, title) {
   return { ok: true, title: added.title };
 }
 
+/* =========================================================================
+   Rotten Tomatoes (via OMDb) — optional, needs OMDB_API_KEY
+   TMDB id → imdb id → OMDb ratings. Cached forever (scores barely move).
+   ========================================================================= */
+const OMDB_KEY = process.env.OMDB_API_KEY || '';
+const ratingsCache = new Map();   // 'movie-123' -> { rt, imdb }
+
+async function fetchRatings(type, tmdbId) {
+  const ck = type + '-' + tmdbId;
+  if (ratingsCache.has(ck)) return ratingsCache.get(ck);
+  const out = { rt: null, imdb: null };
+  if (!OMDB_KEY || !tmdbId) return out;
+  try {
+    const ext = await (await fetch(TMDB_BASE + '/' + type + '/' + tmdbId + '/external_ids?api_key=' + API_KEY)).json();
+    const imdbId = ext && ext.imdb_id;
+    if (imdbId) {
+      const data = await (await fetch('https://www.omdbapi.com/?apikey=' + OMDB_KEY + '&i=' + imdbId)).json();
+      const rt = (data.Ratings || []).find(function (r) { return r.Source === 'Rotten Tomatoes'; });
+      out.rt = rt ? rt.Value : null;
+      out.imdb = data.imdbRating && data.imdbRating !== 'N/A' ? data.imdbRating : null;
+    }
+    ratingsCache.set(ck, out);
+  } catch (e) {}
+  return out;
+}
+
+/* =========================================================================
+   Trending — films in cinemas right now, badged with server availability
+   ========================================================================= */
+async function fetchTrending() {
+  await refreshLibrary().catch(function () {});
+  const out = [], seen = new Set();
+  for (let page = 1; page <= 2; page++) {
+    const res = await fetch(TMDB_BASE + '/movie/now_playing?api_key=' + API_KEY +
+      '&language=en-US&region=' + REGION + '&page=' + page);
+    if (!res.ok) throw new Error('TMDB ' + res.status);
+    const data = await res.json();
+    (data.results || []).forEach(function (r) {
+      if ((r.genre_ids || []).indexOf(16) !== -1) return;   // no cartoons/anime
+      if (seen.has(r.id)) return;
+      seen.add(r.id);
+      const t = normalize(r, 'movie');
+      t.popularity = r.popularity || 0;
+      out.push(t);
+    });
+  }
+  out.sort(function (a, b) { return b.popularity - a.popularity; });
+  out.forEach(function (t) { t.availability = availabilityFor(t); });
+  return out.slice(0, 30);
+}
+
 async function fetchTrailer(type, tmdbId) {
   try {
     const res = await fetch(TMDB_BASE + '/' + type + '/' + tmdbId + '/videos?api_key=' + API_KEY + '&language=en-US');
@@ -452,6 +524,24 @@ const server = http.createServer(async function (req, res) {
     const type = url.searchParams.get('type'), id = url.searchParams.get('id');
     const trailerUrl = await fetchTrailer(type, id);
     return sendJson(res, 200, { url: trailerUrl });
+  }
+
+  // --- API: Rotten Tomatoes / IMDb ratings (needs OMDB_API_KEY) ---
+  if (url.pathname === '/api/ratings' && req.method === 'GET') {
+    const type = url.searchParams.get('type') === 'tv' ? 'tv' : 'movie';
+    const id = Number(url.searchParams.get('id'));
+    const r = await fetchRatings(type, id);
+    return sendJson(res, 200, r);
+  }
+
+  // --- API: trending in cinemas ---
+  if (url.pathname === '/api/trending' && req.method === 'GET') {
+    try {
+      const titles = await fetchTrending();
+      return sendJson(res, 200, { titles: titles });
+    } catch (e) {
+      return sendJson(res, 502, { error: 'TMDB request failed: ' + e.message });
+    }
   }
 
   // --- API: send a title to Radarr/Sonarr to download ---
