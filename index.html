@@ -366,19 +366,31 @@
   .ci-trailer:active { background: var(--accent); }
 
   /* ===================== Trending ===================== */
-  .trend-list { display: grid; gap: 12px; overflow-y: auto; flex: 1; min-height: 0; padding: 2px; }
+  /* the screen must be viewport-bound so the list inside can scroll on phones
+     (#app only has a min-height, so a tall child just gets clipped otherwise) */
+  .trend-screen { height: 100dvh; max-height: 100dvh; }
+  .trend-list {
+    display: grid; gap: 12px; align-content: start;
+    overflow-y: auto; flex: 1; min-height: 0;
+    -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    padding: 2px 2px 18px;
+  }
   .trend-item {
-    display: flex; gap: 14px;
+    display: flex; gap: 12px;
     background: var(--bg-soft); border: 1.5px solid #ffffff14;
     border-radius: 14px; padding: 10px;
   }
   .trend-item img, .trend-item .mini-fallback {
-    width: 64px; height: 94px; border-radius: 9px; object-fit: cover; flex: none;
+    width: 86px; height: 128px; border-radius: 9px; object-fit: cover; flex: none;
     background: linear-gradient(160deg,#241a1c,#0f0f12);
     display: flex; align-items: center; justify-content: center;
     font-size: 10px; color: var(--cream-dim); text-align: center; padding: 4px;
   }
   .ti-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .ti-ov {
+    margin-top: 5px; font-size: 12.5px; line-height: 1.45; color: #cfc9ba;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
   .ti-actions { margin-top: auto; padding-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .mini-btn {
     font-size: 12.5px; font-weight: 600; text-decoration: none;
@@ -794,6 +806,7 @@ async function renderTrending() {
               <div class="ti-body">
                 <div class="ci-title">${esc(t.title)}</div>
                 <div class="ci-meta">${yearOf(t)}${t.vote ? ' · ★ ' + t.vote : ''} <span class="rt-badge" style="display:none"></span></div>
+                <div class="ti-ov">${esc(t.overview)}</div>
                 <div class="ti-actions">
                   <a class="mini-btn ti-trailer" target="_blank" rel="noopener">▶ Trailer</a>
                   ${onServer ? `<span class="ci-avail on">▶ On your server</span>` : ''}
@@ -804,7 +817,7 @@ async function renderTrending() {
   }).join('');
 
   const s = el(`
-    <div class="screen active">
+    <div class="screen active trend-screen">
       <button class="link back-top" id="back">‹ Back</button>
       <h2 style="font-size:26px;margin:2px 0 4px">🔥 Trending in cinemas</h2>
       <p style="color:var(--cream-dim);font-size:14px;margin:0 0 12px">The latest films out now — grab one for your server.</p>

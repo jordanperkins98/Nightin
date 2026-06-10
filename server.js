@@ -208,6 +208,7 @@ const LIB_TTL = 5 * 60 * 1000;
 
 async function refreshLibrary() {
   if (lib.ts && Date.now() - lib.ts < LIB_TTL) return;
+  let failed = false;
   if (radarrOn()) {
     try {
       const movies = await arrFetch(RADARR.url, RADARR.key, '/api/v3/movie');
@@ -223,7 +224,7 @@ async function refreshLibrary() {
         list.push(e);
       });
       lib.radarr = { byTmdb: byTmdb, list: list };
-    } catch (e) { console.warn('[Radarr] refresh failed:', e.message); }
+    } catch (e) { failed = true; console.warn('[Radarr] refresh failed:', e.message); }
   }
   if (sonarrOn()) {
     try {
@@ -242,9 +243,11 @@ async function refreshLibrary() {
         list.push(e);
       });
       lib.sonarr = { byTmdb: byTmdb, byTitle: byTitle, list: list };
-    } catch (e) { console.warn('[Sonarr] refresh failed:', e.message); }
+    } catch (e) { failed = true; console.warn('[Sonarr] refresh failed:', e.message); }
   }
-  lib.ts = Date.now();
+  // a failed refresh (e.g. transient Radarr 500) retries after 30s
+  // instead of leaving the deck badge-less for the whole TTL
+  lib.ts = failed ? Date.now() - (LIB_TTL - 30 * 1000) : Date.now();
 }
 
 function yearNum(t) {
@@ -460,6 +463,7 @@ async function fetchTrending() {
     const data = await res.json();
     (data.results || []).forEach(function (r) {
       if ((r.genre_ids || []).indexOf(16) !== -1) return;   // no cartoons/anime
+      if ((r.vote_average || 0) < 5.5) return;              // skip poorly-rated films
       if (seen.has(r.id)) return;
       seen.add(r.id);
       const t = normalize(r, 'movie');
