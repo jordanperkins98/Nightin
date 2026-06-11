@@ -684,15 +684,27 @@ function setDeck(room, titles) {
   room.done = { 1: false, 2: false };
 }
 
+/* "tonight's verdict": % overlap between what each player would watch
+   (likes ∪ maybes), as a Jaccard similarity */
+function jaccardAgreement(likesA, maybesA, likesB, maybesB) {
+  const setA = new Set(likesA); maybesA.forEach(function (id) { setA.add(id); });
+  const setB = new Set(likesB); maybesB.forEach(function (id) { setB.add(id); });
+  let inter = 0;
+  setA.forEach(function (id) { if (setB.has(id)) inter++; });
+  const union = new Set(setA); setB.forEach(function (id) { union.add(id); });
+  return union.size ? Math.round((inter / union.size) * 100) : 0;
+}
+
 function maybeResult(room) {
   if (!room.done[1] || !room.done[2]) return;
   const a = room.likes[1], b = room.likes[2];
   const ma = room.maybes[1], mb = room.maybes[2];
+  const agreement = jaccardAgreement(a, ma, b, mb);
   const matchIds = Array.from(a).filter(function (id) { return b.has(id); });
   const matches = matchIds.map(function (id) { return room.deckById[id]; }).filter(Boolean);
 
   if (matches.length) {
-    broadcast(room, { t: 'result', kind: matches.length === 1 ? 'single' : 'multi', matches: matches });
+    broadcast(room, { t: 'result', kind: matches.length === 1 ? 'single' : 'multi', matches: matches, agreement: agreement });
     return;
   }
 
@@ -705,13 +717,13 @@ function maybeResult(room) {
   });
 
   if (maybeMatches.length) {
-    broadcast(room, { t: 'result', kind: 'maybe', matches: maybeMatches });
+    broadcast(room, { t: 'result', kind: 'maybe', matches: maybeMatches, agreement: agreement });
   } else {
     const either = room.deck.filter(function (t) {
       return a.has(t.id) || b.has(t.id) || ma.has(t.id) || mb.has(t.id);
     });
     either.sort(function (x, y) { return (y.vote || 0) - (x.vote || 0); });
-    broadcast(room, { t: 'result', kind: 'none', miss: either[0] || null });
+    broadcast(room, { t: 'result', kind: 'none', miss: either[0] || null, agreement: agreement });
   }
 }
 

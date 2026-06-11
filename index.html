@@ -206,6 +206,32 @@
     background: linear-gradient(180deg, #1f1416, #16161A);
     box-shadow: inset 0 0 0 1px var(--accent);
   }
+  .option .check {
+    margin-left: auto;
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--accent);
+    opacity: 0;
+    transform: scale(0.4);
+    transition: opacity 0.15s, transform 0.15s;
+    flex: none;
+  }
+  .option.selected .check {
+    opacity: 1;
+    transform: scale(1);
+    animation: check-pop 0.3s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes check-pop {
+    0% { transform: scale(0.4); }
+    60% { transform: scale(1.3); }
+    100% { transform: scale(1); }
+  }
+  .option.pop { animation: option-pop 0.25s ease; }
+  @keyframes option-pop {
+    0% { transform: scale(1); }
+    40% { transform: scale(0.96); }
+    100% { transform: scale(1); }
+  }
 
   .quiz-foot { margin-top: auto; padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
   .quiz-foot-row { display: flex; gap: 12px; align-items: center; }
@@ -227,10 +253,33 @@
 
   /* ===================== Swipe deck ===================== */
   .deck-head {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 14px;
+  }
+  .toast {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent);
+    color: var(--cream);
+    font-weight: 700;
+    font-size: 13.5px;
+    padding: 7px 16px;
+    border-radius: 99px;
+    white-space: nowrap;
+    box-shadow: 0 8px 20px -8px #000;
+    pointer-events: none;
+    animation: toast-pop 1.6s ease forwards;
+  }
+  @keyframes toast-pop {
+    0% { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(0.9); }
+    15% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+    80% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(0.95); }
   }
   .player-pill {
     display: inline-flex;
@@ -252,6 +301,31 @@
     min-height: 0;
     margin: 4px 0 8px;
   }
+
+  /* quiz: single-select option cards (swipeable, mirrors .card) */
+  .opt-card {
+    position: absolute;
+    inset: 0;
+    height: 72%;
+    top: 0;
+    border-radius: var(--card-radius);
+    overflow: hidden;
+    box-shadow: 0 24px 50px -22px #000;
+    will-change: transform;
+    user-select: none;
+    -webkit-user-select: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 28px;
+  }
+  .opt-card.swipable { cursor: grab; }
+  .opt-card.swipable:active { cursor: grabbing; }
+  .opt-card .emoji { font-size: 64px; margin-bottom: 16px; }
+  .opt-card .label { font-family:'Playfair Display',serif; font-size: 30px; font-weight: 700; line-height: 1.15; }
+  .opt-card .sub { color: var(--cream-dim); margin-top: 10px; font-size: 14.5px; }
 
   .card {
     position: absolute;
@@ -420,7 +494,7 @@
   .mini-btn:disabled { opacity: 0.6; }
 
   /* swipe stamps */
-  .card .stamp {
+  .card .stamp, .opt-card .stamp {
     position: absolute; top: 26px;
     font-size: 30px; font-weight: 800;
     padding: 6px 16px;
@@ -431,9 +505,9 @@
     opacity: 0;
     transition: opacity 0.1s;
   }
-  .card .stamp.like { left: 20px; color: var(--like); border-color: var(--like); transform: rotate(-16deg); }
-  .card .stamp.nope { right: 20px; color: var(--nope); border-color: var(--nope); transform: rotate(16deg); }
-  .card .stamp.maybe { left: 50%; color: var(--maybe); border-color: var(--maybe); transform: translateX(-50%); }
+  .card .stamp.like, .opt-card .stamp.like { left: 20px; color: var(--like); border-color: var(--like); transform: rotate(-16deg); }
+  .card .stamp.nope, .opt-card .stamp.nope { right: 20px; color: var(--nope); border-color: var(--nope); transform: rotate(16deg); }
+  .card .stamp.maybe, .opt-card .stamp.maybe { left: 50%; color: var(--maybe); border-color: var(--maybe); transform: translateX(-50%); }
 
   .deck-controls {
     display: flex;
@@ -492,6 +566,18 @@
     text-shadow: 0 2px 12px #000;
   }
   .match-hero .top-banner small { display:block; font-family:'Inter'; font-weight:600; font-size: 12px; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; }
+
+  /* "tonight's verdict" line on match/no-match screens */
+  .verdict {
+    margin-top: 6px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cream-dim);
+    text-align: center;
+  }
+  .nomatch p { margin: 0 auto 6px; }
+  .nomatch .verdict { margin: -8px auto 18px; max-width: 300px; }
 
   .match-body {
     flex: 1;
@@ -657,16 +743,62 @@ const QUESTIONS = [
   }
 ];
 
+/* dark-tinted gradients for single-select quiz option cards — one per
+   option index, all settle to --bg-soft so cream/white text stays readable */
+const OPT_GRADIENTS = [
+  'linear-gradient(160deg, #3a1f1c 0%, #16161A 100%)', // warm red
+  'linear-gradient(160deg, #1f2e3a 0%, #16161A 100%)', // cool blue
+  'linear-gradient(160deg, #2e3a1f 0%, #16161A 100%)', // olive
+  'linear-gradient(160deg, #3a2e1f 0%, #16161A 100%)', // amber
+  'linear-gradient(160deg, #2a1f3a 0%, #16161A 100%)', // purple
+  'linear-gradient(160deg, #1f3a36 0%, #16161A 100%)'  // teal
+];
+
+/* swipe-deck personality: shown after every 3rd consecutive same-direction swipe */
+const STREAK_MSGS = {
+  right: ['On a roll! 🔥', 'Liking everything tonight! ✨', 'Yes chef! 👨‍🍳'],
+  left: ['Tough crowd 😅', 'Picky picky! 👀', 'Nothing’s hitting, huh? 🚫'],
+  up: ['Maybe pile growing 🤔', 'Keeping your options open 📚', 'Decisions, decisions... 🤷']
+};
+function pickToast(dir) {
+  const pool = STREAK_MSGS[dir] || [];
+  return pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+}
+
+/* "tonight's verdict" flavor text, based on this device's quiz answers */
+const VIBE_PHRASES = {
+  Chill: 'a cosy night in',
+  Laugh: 'a comedy binge',
+  Cry: 'an emotional one',
+  Thrills: 'an edge-of-your-seat pick',
+  Think: 'a brain-bender',
+  Any: 'a wildcard pick'
+};
+function verdictTagline() {
+  let phrase = VIBE_PHRASES[state.answers.vibe] || "tonight's pick";
+  const genres = state.answers.genres;
+  if (Array.isArray(genres) && genres.length) {
+    const g = genres.slice(0, 2).map(function (x) { return x.toLowerCase(); }).join(' & ');
+    phrase += ' with a side of ' + g;
+  }
+  return phrase;
+}
+
 /* ---------------- App state (in memory) ---------------- */
 const state = {
   mode: 'solo',       // 'solo' (pass-and-play) | 'duo' (two phones)
   answers: {},        // this device's quiz answers
   qIndex: 0,
+  optIndex: 0,        // single-select quiz: which option is on top of the card stack
+  _lastQIndex: -1,    // tracks question changes so optIndex only resets on navigation
   deck: [],           // normalized title objects (from server)
   player: 1,          // solo: whose turn to swipe; duo: this device's player #
   likes: { 1: new Set(), 2: new Set() },
   maybes: { 1: new Set(), 2: new Set() },
   swipeIndex: 0,
+  streak: { dir: null, count: 0 },  // consecutive same-direction swipes
+  toastMsg: null,                   // one-shot reaction pill shown on next renderDeck
+  agreement: 0,                     // last computed "in sync" % (cached for the 'picked' screen)
 
   // duo / networking
   ws: null,
@@ -739,7 +871,7 @@ function handleWS(m) {
     case 'deck':      state.deck = m.titles; startDuoSwipe(); break;
     case 'peer-done': setWaitNote('Your partner is done swiping ✓'); break;
     case 'result':    renderResult(m); break;
-    case 'picked':    renderSingleMatch(idToTitle(m.titleId)); break;
+    case 'picked':    renderSingleMatch(idToTitle(m.titleId), state.agreement); break;
     case 'peer-left': renderPeerLeft(); break;
     case 'error':     renderError(m.msg); break;
   }
@@ -775,6 +907,8 @@ function renderStart() {
 function startQuiz() {
   state.answers = { genres: [], services: [] };
   state.qIndex = 0;
+  state.optIndex = 0;
+  state._lastQIndex = -1;
   renderQuestion();
 }
 
@@ -792,6 +926,8 @@ function feelingLucky() {
     era: r(['any', 'modern', 'latest']),
     services: ['any']
   };
+  state.optIndex = 0;
+  state._lastQIndex = -1;
   fetchSoloDeck();
 }
 
@@ -918,6 +1054,8 @@ function renderLobby() {
 function beginDuoQuiz() {
   state.answers = { genres: [], services: [] };
   state.qIndex = 0;
+  state.optIndex = 0;
+  state._lastQIndex = -1;
   renderQuestion();
 }
 
@@ -930,43 +1068,69 @@ function renderQuestion() {
   const total = QUESTIONS.length;
   const pct = Math.round((state.qIndex / total) * 100);
 
-  const selected = state.answers[q.key];
-  const isSel = function (v) {
-    if (q.multi) return Array.isArray(selected) && selected.indexOf(v) !== -1;
-    return selected === v;
-  };
+  // single-select: figure out which option sits on top of the card stack —
+  // restore the existing answer's option when arriving at a *different*
+  // question, but leave optIndex alone when re-rendering after a cycle.
+  if (!q.multi && state._lastQIndex !== state.qIndex) {
+    const ans = state.answers[q.key];
+    const idx = ans != null ? q.opts.findIndex(function (o) { return o.v === ans; }) : -1;
+    state.optIndex = idx >= 0 ? idx : 0;
+    state._lastQIndex = state.qIndex;
+  }
 
-  const optsHtml = q.opts.map(function (o) {
-    const sub = o.sub ? `<span class="sub">${esc(o.sub)}</span>` : '';
-    return `<button class="option ${isSel(o.v) ? 'selected' : ''}" data-v="${esc(o.v)}">
-              <span class="emoji">${o.emoji}</span>
-              <span><span class="ol">${esc(o.label)}</span>${sub}</span>
-            </button>`;
-  }).join('');
-
-  const canNext = q.multi || q.optional ? true : !!selected;
-
-  const s = el(`
-    <div class="screen active">
+  const head = `
       <div class="progress-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>
       <div class="progress-label">Question ${state.qIndex + 1} of ${total}</div>
 
       <div class="q-title">${esc(q.title)}</div>
       <div class="q-hint">${esc(q.hint)}${q.multi ? ' (multi-select)' : ''}</div>
+  `;
 
-      <div class="options ${q.grid ? 'grid2' : ''}">${optsHtml}</div>
+  let s;
+  if (q.multi) {
+    const selected = state.answers[q.key];
+    const isSel = function (v) { return Array.isArray(selected) && selected.indexOf(v) !== -1; };
+    const optsHtml = q.opts.map(function (o) {
+      const sub = o.sub ? `<span class="sub">${esc(o.sub)}</span>` : '';
+      return `<button class="option ${isSel(o.v) ? 'selected' : ''}" data-v="${esc(o.v)}">
+                <span class="emoji">${o.emoji}</span>
+                <span><span class="ol">${esc(o.label)}</span>${sub}</span>
+                <span class="check">✓</span>
+              </button>`;
+    }).join('');
 
-      <div class="quiz-foot">
-        <div class="quiz-foot-row">
-          ${state.qIndex > 0 ? '<button class="btn btn-ghost back">‹</button>' : ''}
-          <button class="btn next" ${canNext ? '' : 'disabled'}>
-            ${state.qIndex === total - 1 ? 'See picks →' : 'Next'}
-          </button>
+    s = el(`
+      <div class="screen active">
+        ${head}
+        <div class="options ${q.grid ? 'grid2' : ''}">${optsHtml}</div>
+
+        <div class="quiz-foot">
+          <div class="quiz-foot-row">
+            ${state.qIndex > 0 ? '<button class="btn btn-ghost back">‹</button>' : ''}
+            <button class="btn next">${state.qIndex === total - 1 ? 'See picks →' : 'Next'}</button>
+          </div>
+          <button class="link skip">🤷 Skip — I don't know</button>
         </div>
-        <button class="link skip">🤷 Skip — I don't know</button>
       </div>
-    </div>
-  `);
+    `);
+  } else {
+    s = el(`
+      <div class="screen active">
+        ${head}
+        <div class="deck opt-deck" id="opt-deck"></div>
+        <div class="deck-controls">
+          <button class="round-btn no" id="opt-no" aria-label="Show another option">✗</button>
+          <button class="round-btn maybe" id="opt-skip" aria-label="Skip this question">🤔</button>
+          <button class="round-btn yes" id="opt-yes" aria-label="Pick this">♥</button>
+        </div>
+
+        <div class="quiz-foot">
+          ${state.qIndex > 0 ? '<button class="btn btn-ghost back">‹ Back</button>' : ''}
+          <button class="link skip">🤷 Skip — I don't know</button>
+        </div>
+      </div>
+    `);
+  }
   app.appendChild(s);
 
   // animate progress bar to "current" position after paint
@@ -974,36 +1138,48 @@ function renderQuestion() {
     s.querySelector('.progress-bar').style.width = Math.round(((state.qIndex + 1) / total) * 100) + '%';
   });
 
-  const nextBtn = s.querySelector('.next');
-
-  s.querySelectorAll('.option').forEach(function (btn) {
-    btn.onclick = function () {
-      const v = btn.getAttribute('data-v');
-      if (q.multi) {
+  if (q.multi) {
+    s.querySelectorAll('.option').forEach(function (btn) {
+      btn.onclick = function () {
+        const v = btn.getAttribute('data-v');
         const arr = state.answers[q.key] || [];
         const i = arr.indexOf(v);
         if (i === -1) arr.push(v); else arr.splice(i, 1);
         state.answers[q.key] = arr;
         btn.classList.toggle('selected');
-      } else {
-        state.answers[q.key] = v;
-        s.querySelectorAll('.option').forEach(function (b) { b.classList.remove('selected'); });
-        btn.classList.add('selected');
-        nextBtn.disabled = false;
-        // auto-advance on single-select for snappy feel
-        setTimeout(goNext, 180);
-      }
-    };
-  });
+        btn.classList.add('pop');
+        setTimeout(function () { btn.classList.remove('pop'); }, 250);
+      };
+    });
+    s.querySelector('.next').onclick = goNext;
+  } else {
+    renderOptDeck(s, q);
+  }
 
   if (state.qIndex > 0) s.querySelector('.back').onclick = function () {
     state.qIndex--; renderQuestion();
   };
-  nextBtn.onclick = goNext;
   s.querySelector('.skip').onclick = function () {
     delete state.answers[q.key];
     goNext();
   };
+}
+
+/* single-select quiz question: render a swipeable stack of option cards
+   (mirrors renderDeck — top card draggable, up to 3 peeking behind) */
+function renderOptDeck(s, q) {
+  const deck = s.querySelector('#opt-deck');
+  const total = q.opts.length;
+  const stackCount = Math.min(3, total);
+  for (let i = stackCount - 1; i >= 0; i--) {
+    const optIdx = (state.optIndex + i) % total;
+    deck.appendChild(buildOptCard(q.opts[optIdx], optIdx, i));
+  }
+  const top = deck.querySelector('.opt-card[data-depth="0"]');
+  attachDrag(top, function (dir) { flyOutOption(top, dir, q); });
+  s.querySelector('#opt-no').onclick = function () { flyOutOption(top, 'left', q); };
+  s.querySelector('#opt-skip').onclick = function () { flyOutOption(top, 'up', q); };
+  s.querySelector('#opt-yes').onclick = function () { flyOutOption(top, 'right', q); };
 }
 
 function goNext() {
@@ -1191,6 +1367,8 @@ function startSwipeSession() {
   state.likes = { 1: new Set(), 2: new Set() };
   state.maybes = { 1: new Set(), 2: new Set() };
   state.swipeIndex = 0;
+  state.streak = { dir: null, count: 0 };
+  state.toastMsg = null;
   renderDeck();
 }
 
@@ -1199,6 +1377,8 @@ function startDuoSwipe() {
   state.likes[state.player] = new Set();
   state.maybes[state.player] = new Set();
   state.swipeIndex = 0;
+  state.streak = { dir: null, count: 0 };
+  state.toastMsg = null;
   renderDeck();
 }
 
@@ -1238,11 +1418,14 @@ function renderDeck() {
   const total = state.deck.length;
   const remaining = total - state.swipeIndex;
 
+  const toastHtml = state.toastMsg ? `<div class="toast">${esc(state.toastMsg)}</div>` : '';
+
   const s = el(`
     <div class="screen active">
       <div class="deck-head">
         <span class="player-pill"><span class="dot"></span>${state.mode === 'duo' ? 'Your picks' : 'Player ' + state.player}</span>
         <span class="deck-count">${remaining} of ${total} left</span>
+        ${toastHtml}
       </div>
       <div class="deck" id="deck"></div>
       <div class="deck-controls">
@@ -1254,6 +1437,7 @@ function renderDeck() {
     </div>
   `);
   app.appendChild(s);
+  state.toastMsg = null;
 
   const deck = s.querySelector('#deck');
 
@@ -1267,7 +1451,7 @@ function renderDeck() {
 
   const topCard = deck.querySelector('.card[data-depth="0"]');
   if (topCard) {
-    attachDrag(topCard);
+    attachDrag(topCard, function (dir) { flyOut(topCard, dir); });
     s.querySelector('#btn-no').onclick = function () { flyOut(topCard, 'left'); };
     s.querySelector('#btn-maybe').onclick = function () { flyOut(topCard, 'up'); };
     s.querySelector('#btn-yes').onclick = function () { flyOut(topCard, 'right'); };
@@ -1330,6 +1514,27 @@ function buildCard(t, depth) {
   return card;
 }
 
+/* quiz: build a single-select option card — mirrors buildCard's stack
+   styling (depth-based scale/translateY/z-index, same .stamp children)
+   but shows the option's emoji/label/sub on a gradient background. */
+function buildOptCard(opt, optIdx, depth) {
+  const scale = 1 - depth * 0.05;
+  const translateY = depth * 14;
+  const gradient = OPT_GRADIENTS[optIdx % OPT_GRADIENTS.length];
+  return el(`
+    <div class="opt-card ${depth === 0 ? 'swipable' : ''}"
+         data-depth="${depth}"
+         style="transform: translateY(${translateY}px) scale(${scale}); z-index:${10 - depth}; background: ${gradient};">
+      <div class="emoji">${opt.emoji}</div>
+      <div class="label">${esc(opt.label)}</div>
+      ${opt.sub ? `<div class="sub">${esc(opt.sub)}</div>` : ''}
+      <div class="stamp like">YES!</div>
+      <div class="stamp nope">NEXT</div>
+      <div class="stamp maybe">SKIP</div>
+    </div>
+  `);
+}
+
 function badgeText(t) { return t.type === 'tv' ? 'Series' : 'Movie'; }
 
 /* server-availability pill (only shown when Radarr/Sonarr is wired up) */
@@ -1343,8 +1548,13 @@ function availPill(t) {
   return a ? `<div class="avail ${a.cls}">${a.label}</div>` : '';
 }
 
-/* ---------------- Drag / swipe mechanics ---------------- */
-function attachDrag(card) {
+/* ---------------- Drag / swipe mechanics ----------------
+   Generic pointer/touch/mouse drag handling shared by the movie deck
+   (.card) and the quiz option cards (.opt-card) — both have the same
+   .stamp.like/.nope/.maybe children. onCommit(dir) fires once a drag
+   crosses the commit threshold; everything else (snap-back, stamp
+   opacity while dragging) is identical for both card types. */
+function attachDrag(card, onCommit) {
   let startX = 0, startY = 0, dx = 0, dy = 0, dragging = false, pointerId = null;
   const COMMIT = 95;     // px to commit a swipe decision
   const likeStamp = card.querySelector('.stamp.like');
@@ -1378,9 +1588,9 @@ function attachDrag(card) {
     card.style.transition = 'transform 0.35s cubic-bezier(.2,.7,.3,1), opacity 0.35s';
     const vertical = dy < 0 && Math.abs(dy) > Math.abs(dx);
     if (vertical && Math.abs(dy) > COMMIT) {
-      flyOut(card, 'up');
+      onCommit('up');
     } else if (!vertical && Math.abs(dx) > COMMIT) {
-      flyOut(card, dx > 0 ? 'right' : 'left');
+      onCommit(dx > 0 ? 'right' : 'left');
     } else {
       // snap back
       card.style.transform = 'translateY(0) scale(1)';
@@ -1442,7 +1652,50 @@ function flyOut(card, dir) {
     if (state.swipeIndex >= state.deck.length) {
       onPlayerFinished();
     } else {
+      if (state.streak.dir === dir) state.streak.count++;
+      else state.streak = { dir: dir, count: 1 };
+
+      if (state.streak.count > 0 && state.streak.count % 3 === 0) {
+        state.toastMsg = pickToast(dir);
+      }
       renderDeck();
+    }
+  }, 320);
+}
+
+/* Quiz option cards: same fly-out animation as flyOut(), but the commit
+   action picks/cycles/skips a quiz question instead of swiping a movie. */
+let optFlying = false;
+function flyOutOption(card, dir, q) {
+  if (optFlying) return;           // guard against double-trigger
+  optFlying = true;
+
+  card.style.transition = 'transform 0.35s ease, opacity 0.35s ease';
+  let x = 0, y = 40, rot = 0;
+  if (dir === 'right') { x = window.innerWidth; rot = 22; }
+  else if (dir === 'left') { x = -window.innerWidth; rot = -22; }
+  else { y = -window.innerHeight; rot = 0; }
+  card.style.transform = `translate(${x}px, ${y}px) rotate(${rot}deg)`;
+  card.style.opacity = '0';
+  const stamp = dir === 'right' ? card.querySelector('.stamp.like')
+    : dir === 'up' ? card.querySelector('.stamp.maybe')
+    : card.querySelector('.stamp.nope');
+  stamp.style.opacity = 1;
+
+  setTimeout(function () {
+    optFlying = false;
+    if (dir === 'right') {
+      // picked this option
+      state.answers[q.key] = q.opts[state.optIndex].v;
+      goNext();
+    } else if (dir === 'up') {
+      // skip the whole question — same as the "Skip" link
+      delete state.answers[q.key];
+      goNext();
+    } else {
+      // cycle to the next option in this question
+      state.optIndex = (state.optIndex + 1) % q.opts.length;
+      renderQuestion();
     }
   }, 320);
 }
@@ -1470,10 +1723,11 @@ function onPlayerFinished() {
 
 /* DUO: server-computed result arrives for both phones at once */
 function renderResult(m) {
-  if (m.kind === 'single') renderSingleMatch(m.matches[0]);
-  else if (m.kind === 'multi') renderMultiMatch(m.matches);
-  else if (m.kind === 'maybe') renderMultiMatch(m.matches, true);
-  else renderNoMatch(m.miss || null);
+  state.agreement = m.agreement || 0;
+  if (m.kind === 'single') renderSingleMatch(m.matches[0], m.agreement);
+  else if (m.kind === 'multi') renderMultiMatch(m.matches, false, m.agreement);
+  else if (m.kind === 'maybe') renderMultiMatch(m.matches, true, m.agreement);
+  else renderNoMatch(m.miss || null, m.agreement);
 }
 
 /* ====================================================================
@@ -1498,16 +1752,30 @@ function renderPassPhone() {
 /* ====================================================================
    Compute matches
    ==================================================================== */
+/* "tonight's verdict": % overlap between what each player would watch
+   (likes ∪ maybes), as a Jaccard similarity */
+function computeAgreement() {
+  const m1 = state.maybes[1], m2 = state.maybes[2];
+  const setA = new Set(state.likes[1]); m1.forEach(function (id) { setA.add(id); });
+  const setB = new Set(state.likes[2]); m2.forEach(function (id) { setB.add(id); });
+  let inter = 0;
+  setA.forEach(function (id) { if (setB.has(id)) inter++; });
+  const union = new Set(setA); setB.forEach(function (id) { union.add(id); });
+  return union.size ? Math.round((inter / union.size) * 100) : 0;
+}
+
 function computeMatches() {
   const p1 = state.likes[1], p2 = state.likes[2];
+  const agreement = computeAgreement();
+  state.agreement = agreement;
   const matchIds = Array.from(p1).filter(function (id) { return p2.has(id); });
   const matches = matchIds.map(idToTitle).filter(Boolean);
 
   if (matches.length === 1) {
-    renderSingleMatch(matches[0]);
+    renderSingleMatch(matches[0], agreement);
     return;
   } else if (matches.length > 1) {
-    renderMultiMatch(matches);
+    renderMultiMatch(matches, false, agreement);
     return;
   }
 
@@ -1520,9 +1788,9 @@ function computeMatches() {
     return inA && inB;
   });
   if (maybeMatches.length) {
-    renderMultiMatch(maybeMatches, true);
+    renderMultiMatch(maybeMatches, true, agreement);
   } else {
-    renderNoMatch();
+    renderNoMatch(undefined, agreement);
   }
 }
 function idToTitle(id) { return state.deck.find(function (t) { return t.id === id; }); }
@@ -1530,7 +1798,7 @@ function idToTitle(id) { return state.deck.find(function (t) { return t.id === i
 /* ====================================================================
    SCREEN: Single match (celebrate)
    ==================================================================== */
-function renderSingleMatch(t) {
+function renderSingleMatch(t, agreement) {
   clearApp();
   const bg = poster780(t);
   const s = el(`
@@ -1538,7 +1806,10 @@ function renderSingleMatch(t) {
       <div class="match-hero">
         <div class="bg" ${bg ? `style="background-image:url('${bg}')"` : ''}></div>
         <div class="scrim"></div>
-        <div class="top-banner"><small>It's a match!</small>You both swiped right ❤️</div>
+        <div class="top-banner">
+          <small>It's a match!</small>You both swiped right ❤️
+          <div class="verdict">${esc(verdictTagline())} · 💞 ${agreement}% in sync</div>
+        </div>
       </div>
       <div class="match-body">
         <h2>${esc(t.title)}</h2>
@@ -1616,7 +1887,7 @@ async function wireTrailer(anchor, t) {
 /* ====================================================================
    SCREEN: Multiple matches (chooser)
    ==================================================================== */
-function renderMultiMatch(matches, isMaybe) {
+function renderMultiMatch(matches, isMaybe, agreement) {
   clearApp();
   const items = matches.map(function (t) {
     const thumb = posterThumb(t);
@@ -1645,6 +1916,7 @@ function renderMultiMatch(matches, isMaybe) {
         <div style="font-size:13px;letter-spacing:2px;color:var(--accent);font-weight:700;text-transform:uppercase">${esc(eyebrow)}</div>
         <h2 style="font-size:28px;margin:6px 0 2px">${esc(heading)}</h2>
         <p style="color:var(--cream-dim);font-size:14px;margin:0 0 4px">${esc(sub)}</p>
+        <div class="verdict">${esc(verdictTagline())} · 💞 ${agreement}% in sync</div>
       </div>
       <div class="chooser-list" style="overflow-y:auto;flex:1;padding:4px 2px">${items}</div>
       <button class="btn btn-ghost" id="again" style="margin-top:12px">${state.mode === 'duo' ? '🔁 Pick again' : 'Start over'}</button>
@@ -1664,7 +1936,7 @@ function renderMultiMatch(matches, isMaybe) {
     item.onclick = function () {
       // in duo, broadcast the pick so both phones land on the same title
       if (state.mode === 'duo') wsSend({ t: 'pick', titleId: id });
-      else renderSingleMatch(t);
+      else renderSingleMatch(t, agreement);
     };
   });
   s.querySelector('#again').onclick = onAgain;
@@ -1673,7 +1945,7 @@ function renderMultiMatch(matches, isMaybe) {
 /* ====================================================================
    SCREEN: No match (closest miss + re-swipe)
    ==================================================================== */
-function renderNoMatch(serverMiss) {
+function renderNoMatch(serverMiss, agreement) {
   clearApp();
 
   // SOLO computes the closest miss locally; DUO receives it from the server.
@@ -1705,6 +1977,7 @@ function renderNoMatch(serverMiss) {
         <div class="x">🙈</div>
         <h2>No match… yet</h2>
         <p>You didn't both swipe right on anything. Want to go again on the ones that were close?</p>
+        <div class="verdict">${esc(verdictTagline())} · 💞 ${agreement}% in sync</div>
         ${missHtml}
         <div class="center-actions">
           <button class="btn" id="reswipe">🔁 Re-swipe round</button>
