@@ -52,28 +52,42 @@ function computeSpec(list) {
   const genres = new Set(), added = new Set(), formats = new Set();
   const eras = new Set(), services = new Set();
   let runtimeLte = null;
+  const minVotesCandidates = [];
 
   list.forEach(function (a) {
     (a.genres || []).forEach(function (g) { genres.add(g); });
-    const v = VIBE_MAP[a.vibe] || VIBE_MAP.Any;
-    v.add.forEach(function (g) { added.add(g); });
-    if (a.length === 'series') formats.add('tv');
-    else if (a.length === 'any' || !a.length) { formats.add('movie'); formats.add('tv'); }
-    else formats.add('movie');
-    if (a.length === 'short') runtimeLte = 90;
-    else if (a.energy === 'zombie' && runtimeLte == null) runtimeLte = 115;
-    eras.add(a.era || 'any');
+
+    const vibes = (a.vibe && a.vibe.length) ? a.vibe : [];
+    vibes.forEach(function (v) {
+      const vm = VIBE_MAP[v];
+      if (!vm) return;
+      vm.add.forEach(function (g) { added.add(g); });
+      minVotesCandidates.push(vm.minVotes);
+    });
+
+    const lengths = (a.length && a.length.length) ? a.length : ['any'];
+    lengths.forEach(function (lv) {
+      if (lv === 'series') formats.add('tv');
+      else if (lv === 'any') { formats.add('movie'); formats.add('tv'); }
+      else formats.add('movie');
+    });
+    if (lengths.indexOf('short') !== -1) runtimeLte = 90;
+
+    const energies = a.energy || [];
+    if (energies.indexOf('zombie') !== -1 && runtimeLte == null) runtimeLte = 115;
+
+    const eraVals = (a.era && a.era.length) ? a.era : ['any'];
+    eraVals.forEach(function (e) { eras.add(e); });
+
     (a.services || []).forEach(function (s) { services.add(s); });
   });
 
-  // sort/vote-floor: use the shared vibe when both agree (or solo); else neutral
-  let sort = 'vote_average.desc', minVotes = 150;
-  if (list.length === 1 || list[0].vibe === list[1].vibe) {
-    const v = VIBE_MAP[list[0].vibe] || VIBE_MAP.Any;
-    sort = v.sort; minVotes = v.minVotes;
-  }
+  // sort is constant across every vibe — only the vote floor varies, so take
+  // the most permissive (lowest) floor among every vibe either player picked
+  const sort = 'vote_average.desc';
+  const minVotes = minVotesCandidates.length ? Math.min(...minVotesCandidates) : 150;
 
-  // era: only constrain when both pick the same (non-"any") era
+  // era: only constrain when every selection (across both players) agrees on one era
   const era = eras.size === 1 ? Array.from(eras)[0] : 'any';
 
   // services: 'any' (or nothing picked) → no filter at all;

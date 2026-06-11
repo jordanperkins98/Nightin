@@ -302,31 +302,6 @@
     margin: 4px 0 8px;
   }
 
-  /* quiz: single-select option cards (swipeable, mirrors .card) */
-  .opt-card {
-    position: absolute;
-    inset: 0;
-    height: 72%;
-    top: 0;
-    border-radius: var(--card-radius);
-    overflow: hidden;
-    box-shadow: 0 24px 50px -22px #000;
-    will-change: transform;
-    user-select: none;
-    -webkit-user-select: none;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 28px;
-  }
-  .opt-card.swipable { cursor: grab; }
-  .opt-card.swipable:active { cursor: grabbing; }
-  .opt-card .emoji { font-size: 64px; margin-bottom: 16px; }
-  .opt-card .label { font-family:'Playfair Display',serif; font-size: 30px; font-weight: 700; line-height: 1.15; }
-  .opt-card .sub { color: var(--cream-dim); margin-top: 10px; font-size: 14.5px; }
-
   .card {
     position: absolute;
     inset: 0;
@@ -494,7 +469,7 @@
   .mini-btn:disabled { opacity: 0.6; }
 
   /* swipe stamps */
-  .card .stamp, .opt-card .stamp {
+  .card .stamp {
     position: absolute; top: 26px;
     font-size: 30px; font-weight: 800;
     padding: 6px 16px;
@@ -505,9 +480,9 @@
     opacity: 0;
     transition: opacity 0.1s;
   }
-  .card .stamp.like, .opt-card .stamp.like { left: 20px; color: var(--like); border-color: var(--like); transform: rotate(-16deg); }
-  .card .stamp.nope, .opt-card .stamp.nope { right: 20px; color: var(--nope); border-color: var(--nope); transform: rotate(16deg); }
-  .card .stamp.maybe, .opt-card .stamp.maybe { left: 50%; color: var(--maybe); border-color: var(--maybe); transform: translateX(-50%); }
+  .card .stamp.like { left: 20px; color: var(--like); border-color: var(--like); transform: rotate(-16deg); }
+  .card .stamp.nope { right: 20px; color: var(--nope); border-color: var(--nope); transform: rotate(16deg); }
+  .card .stamp.maybe { left: 50%; color: var(--maybe); border-color: var(--maybe); transform: translateX(-50%); }
 
   .deck-controls {
     display: flex;
@@ -683,7 +658,7 @@ const IMG_W780 = 'https://image.tmdb.org/t/p/w780';
 /* ---------------- Quiz definition ---------------- */
 const QUESTIONS = [
   {
-    key: 'vibe', title: 'Vibe tonight?', hint: 'Set the emotional tone.', multi: false,
+    key: 'vibe', title: 'Vibe tonight?', hint: 'Pick any moods that fit (or none).', multi: true,
     opts: [
       { v: 'Chill',   label: 'Chill',   emoji: '🛋️', sub: 'Easy & comforting' },
       { v: 'Laugh',   label: 'Laugh',   emoji: '😂', sub: 'Make us grin' },
@@ -694,7 +669,7 @@ const QUESTIONS = [
     ]
   },
   {
-    key: 'length', title: 'How long have you got?', hint: 'Pick the format.', multi: false,
+    key: 'length', title: 'How long have you got?', hint: 'Pick any formats that work (or none).', multi: true,
     opts: [
       { v: 'short',  label: 'Under 90 mins', emoji: '⏱️', sub: 'A quick movie' },
       { v: 'movie',  label: 'A movie',       emoji: '🎬', sub: 'Standard feature' },
@@ -715,7 +690,7 @@ const QUESTIONS = [
     ]
   },
   {
-    key: 'energy', title: 'Energy level?', hint: 'How much attention can you give?', multi: false,
+    key: 'energy', title: 'Energy level?', hint: 'Pick any that match your energy (or none).', multi: true,
     opts: [
       { v: 'zombie', label: 'Sofa zombie', emoji: '🧟', sub: 'Light & easy' },
       { v: 'light',  label: 'Lightly engaged', emoji: '🙂', sub: 'Half watching' },
@@ -724,7 +699,7 @@ const QUESTIONS = [
     ]
   },
   {
-    key: 'era', title: 'Era preference?', hint: 'When was it made?', multi: false,
+    key: 'era', title: 'Era preference?', hint: 'Pick any eras you fancy (or none).', multi: true,
     opts: [
       { v: 'any',     label: 'Anything', emoji: '♾️' },
       { v: 'classic', label: 'Classic — pre-2000', emoji: '🎞️' },
@@ -741,17 +716,6 @@ const QUESTIONS = [
       { v: 'any',     label: 'Anything', emoji: '♾️', sub: 'No filter' }
     ]
   }
-];
-
-/* dark-tinted gradients for single-select quiz option cards — one per
-   option index, all settle to --bg-soft so cream/white text stays readable */
-const OPT_GRADIENTS = [
-  'linear-gradient(160deg, #3a1f1c 0%, #16161A 100%)', // warm red
-  'linear-gradient(160deg, #1f2e3a 0%, #16161A 100%)', // cool blue
-  'linear-gradient(160deg, #2e3a1f 0%, #16161A 100%)', // olive
-  'linear-gradient(160deg, #3a2e1f 0%, #16161A 100%)', // amber
-  'linear-gradient(160deg, #2a1f3a 0%, #16161A 100%)', // purple
-  'linear-gradient(160deg, #1f3a36 0%, #16161A 100%)'  // teal
 ];
 
 /* swipe-deck personality: shown after every 3rd consecutive same-direction swipe */
@@ -775,7 +739,10 @@ const VIBE_PHRASES = {
   Any: 'a wildcard pick'
 };
 function verdictTagline() {
-  let phrase = VIBE_PHRASES[state.answers.vibe] || "tonight's pick";
+  const vibes = state.answers.vibe;
+  let phrase = (Array.isArray(vibes) && vibes.length)
+    ? (VIBE_PHRASES[vibes[0]] || "tonight's pick")
+    : "tonight's pick";
   const genres = state.answers.genres;
   if (Array.isArray(genres) && genres.length) {
     const g = genres.slice(0, 2).map(function (x) { return x.toLowerCase(); }).join(' & ');
@@ -789,8 +756,6 @@ const state = {
   mode: 'solo',       // 'solo' (pass-and-play) | 'duo' (two phones)
   answers: {},        // this device's quiz answers
   qIndex: 0,
-  optIndex: 0,        // single-select quiz: which option is on top of the card stack
-  _lastQIndex: -1,    // tracks question changes so optIndex only resets on navigation
   deck: [],           // normalized title objects (from server)
   player: 1,          // solo: whose turn to swipe; duo: this device's player #
   likes: { 1: new Set(), 2: new Set() },
@@ -907,8 +872,6 @@ function renderStart() {
 function startQuiz() {
   state.answers = { genres: [], services: [] };
   state.qIndex = 0;
-  state.optIndex = 0;
-  state._lastQIndex = -1;
   renderQuestion();
 }
 
@@ -919,15 +882,13 @@ function feelingLucky() {
   const genrePool = QUESTIONS[2].opts.map(function (o) { return o.v; });
   shuffle(genrePool);
   state.answers = {
-    vibe: r(['Chill', 'Laugh', 'Cry', 'Thrills', 'Think']),
-    length: r(['short', 'movie', 'series']),
+    vibe: [r(['Chill', 'Laugh', 'Cry', 'Thrills', 'Think'])],
+    length: [r(['short', 'movie', 'series'])],
     genres: genrePool.slice(0, 1 + Math.floor(Math.random() * 2)),
-    energy: r(['zombie', 'light', 'full']),
-    era: r(['any', 'modern', 'latest']),
+    energy: [r(['zombie', 'light', 'full'])],
+    era: [r(['any', 'modern', 'latest'])],
     services: ['any']
   };
-  state.optIndex = 0;
-  state._lastQIndex = -1;
   fetchSoloDeck();
 }
 
@@ -1054,8 +1015,6 @@ function renderLobby() {
 function beginDuoQuiz() {
   state.answers = { genres: [], services: [] };
   state.qIndex = 0;
-  state.optIndex = 0;
-  state._lastQIndex = -1;
   renderQuestion();
 }
 
@@ -1068,69 +1027,39 @@ function renderQuestion() {
   const total = QUESTIONS.length;
   const pct = Math.round((state.qIndex / total) * 100);
 
-  // single-select: figure out which option sits on top of the card stack —
-  // restore the existing answer's option when arriving at a *different*
-  // question, but leave optIndex alone when re-rendering after a cycle.
-  if (!q.multi && state._lastQIndex !== state.qIndex) {
-    const ans = state.answers[q.key];
-    const idx = ans != null ? q.opts.findIndex(function (o) { return o.v === ans; }) : -1;
-    state.optIndex = idx >= 0 ? idx : 0;
-    state._lastQIndex = state.qIndex;
-  }
-
   const head = `
       <div class="progress-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>
       <div class="progress-label">Question ${state.qIndex + 1} of ${total}</div>
 
       <div class="q-title">${esc(q.title)}</div>
-      <div class="q-hint">${esc(q.hint)}${q.multi ? ' (multi-select)' : ''}</div>
+      <div class="q-hint">${esc(q.hint)}</div>
   `;
 
-  let s;
-  if (q.multi) {
-    const selected = state.answers[q.key];
-    const isSel = function (v) { return Array.isArray(selected) && selected.indexOf(v) !== -1; };
-    const optsHtml = q.opts.map(function (o) {
-      const sub = o.sub ? `<span class="sub">${esc(o.sub)}</span>` : '';
-      return `<button class="option ${isSel(o.v) ? 'selected' : ''}" data-v="${esc(o.v)}">
-                <span class="emoji">${o.emoji}</span>
-                <span><span class="ol">${esc(o.label)}</span>${sub}</span>
-                <span class="check">✓</span>
-              </button>`;
-    }).join('');
+  const selected = state.answers[q.key];
+  const isSel = function (v) { return Array.isArray(selected) && selected.indexOf(v) !== -1; };
+  const optsHtml = q.opts.map(function (o) {
+    const sub = o.sub ? `<span class="sub">${esc(o.sub)}</span>` : '';
+    return `<button class="option ${isSel(o.v) ? 'selected' : ''}" data-v="${esc(o.v)}">
+              <span class="emoji">${o.emoji}</span>
+              <span><span class="ol">${esc(o.label)}</span>${sub}</span>
+              <span class="check">✓</span>
+            </button>`;
+  }).join('');
 
-    s = el(`
-      <div class="screen active">
-        ${head}
-        <div class="options ${q.grid ? 'grid2' : ''}">${optsHtml}</div>
+  const s = el(`
+    <div class="screen active">
+      ${head}
+      <div class="options ${q.grid ? 'grid2' : ''}">${optsHtml}</div>
 
-        <div class="quiz-foot">
-          <div class="quiz-foot-row">
-            ${state.qIndex > 0 ? '<button class="btn btn-ghost back">‹</button>' : ''}
-            <button class="btn next">${state.qIndex === total - 1 ? 'See picks →' : 'Next'}</button>
-          </div>
-          <button class="link skip">🤷 Skip — I don't know</button>
+      <div class="quiz-foot">
+        <div class="quiz-foot-row">
+          ${state.qIndex > 0 ? '<button class="btn btn-ghost back">‹</button>' : ''}
+          <button class="btn next">${state.qIndex === total - 1 ? 'See picks →' : 'Next'}</button>
         </div>
+        <button class="link skip">🤷 Skip — I don't know</button>
       </div>
-    `);
-  } else {
-    s = el(`
-      <div class="screen active">
-        ${head}
-        <div class="deck opt-deck" id="opt-deck"></div>
-        <div class="deck-controls">
-          <button class="round-btn no" id="opt-no" aria-label="Show another option">✗</button>
-          <button class="round-btn maybe" id="opt-skip" aria-label="Skip this question">🤔</button>
-          <button class="round-btn yes" id="opt-yes" aria-label="Pick this">♥</button>
-        </div>
-
-        <div class="quiz-foot">
-          ${state.qIndex > 0 ? '<button class="btn btn-ghost back">‹ Back</button>' : ''}
-          <button class="link skip">🤷 Skip — I don't know</button>
-        </div>
-      </div>
-    `);
-  }
+    </div>
+  `);
   app.appendChild(s);
 
   // animate progress bar to "current" position after paint
@@ -1138,23 +1067,19 @@ function renderQuestion() {
     s.querySelector('.progress-bar').style.width = Math.round(((state.qIndex + 1) / total) * 100) + '%';
   });
 
-  if (q.multi) {
-    s.querySelectorAll('.option').forEach(function (btn) {
-      btn.onclick = function () {
-        const v = btn.getAttribute('data-v');
-        const arr = state.answers[q.key] || [];
-        const i = arr.indexOf(v);
-        if (i === -1) arr.push(v); else arr.splice(i, 1);
-        state.answers[q.key] = arr;
-        btn.classList.toggle('selected');
-        btn.classList.add('pop');
-        setTimeout(function () { btn.classList.remove('pop'); }, 250);
-      };
-    });
-    s.querySelector('.next').onclick = goNext;
-  } else {
-    renderOptDeck(s, q);
-  }
+  s.querySelectorAll('.option').forEach(function (btn) {
+    btn.onclick = function () {
+      const v = btn.getAttribute('data-v');
+      const arr = state.answers[q.key] || [];
+      const i = arr.indexOf(v);
+      if (i === -1) arr.push(v); else arr.splice(i, 1);
+      state.answers[q.key] = arr;
+      btn.classList.toggle('selected');
+      btn.classList.add('pop');
+      setTimeout(function () { btn.classList.remove('pop'); }, 250);
+    };
+  });
+  s.querySelector('.next').onclick = goNext;
 
   if (state.qIndex > 0) s.querySelector('.back').onclick = function () {
     state.qIndex--; renderQuestion();
@@ -1163,23 +1088,6 @@ function renderQuestion() {
     delete state.answers[q.key];
     goNext();
   };
-}
-
-/* single-select quiz question: render a swipeable stack of option cards
-   (mirrors renderDeck — top card draggable, up to 3 peeking behind) */
-function renderOptDeck(s, q) {
-  const deck = s.querySelector('#opt-deck');
-  const total = q.opts.length;
-  const stackCount = Math.min(3, total);
-  for (let i = stackCount - 1; i >= 0; i--) {
-    const optIdx = (state.optIndex + i) % total;
-    deck.appendChild(buildOptCard(q.opts[optIdx], optIdx, i));
-  }
-  const top = deck.querySelector('.opt-card[data-depth="0"]');
-  attachDrag(top, function (dir) { flyOutOption(top, dir, q); });
-  s.querySelector('#opt-no').onclick = function () { flyOutOption(top, 'left', q); };
-  s.querySelector('#opt-skip').onclick = function () { flyOutOption(top, 'up', q); };
-  s.querySelector('#opt-yes').onclick = function () { flyOutOption(top, 'right', q); };
 }
 
 function goNext() {
@@ -1514,27 +1422,6 @@ function buildCard(t, depth) {
   return card;
 }
 
-/* quiz: build a single-select option card — mirrors buildCard's stack
-   styling (depth-based scale/translateY/z-index, same .stamp children)
-   but shows the option's emoji/label/sub on a gradient background. */
-function buildOptCard(opt, optIdx, depth) {
-  const scale = 1 - depth * 0.05;
-  const translateY = depth * 14;
-  const gradient = OPT_GRADIENTS[optIdx % OPT_GRADIENTS.length];
-  return el(`
-    <div class="opt-card ${depth === 0 ? 'swipable' : ''}"
-         data-depth="${depth}"
-         style="transform: translateY(${translateY}px) scale(${scale}); z-index:${10 - depth}; background: ${gradient};">
-      <div class="emoji">${opt.emoji}</div>
-      <div class="label">${esc(opt.label)}</div>
-      ${opt.sub ? `<div class="sub">${esc(opt.sub)}</div>` : ''}
-      <div class="stamp like">YES!</div>
-      <div class="stamp nope">NEXT</div>
-      <div class="stamp maybe">SKIP</div>
-    </div>
-  `);
-}
-
 function badgeText(t) { return t.type === 'tv' ? 'Series' : 'Movie'; }
 
 /* server-availability pill (only shown when Radarr/Sonarr is wired up) */
@@ -1549,11 +1436,10 @@ function availPill(t) {
 }
 
 /* ---------------- Drag / swipe mechanics ----------------
-   Generic pointer/touch/mouse drag handling shared by the movie deck
-   (.card) and the quiz option cards (.opt-card) — both have the same
-   .stamp.like/.nope/.maybe children. onCommit(dir) fires once a drag
-   crosses the commit threshold; everything else (snap-back, stamp
-   opacity while dragging) is identical for both card types. */
+   Generic pointer/touch/mouse drag handling for the movie deck's swipe
+   cards (.card, with .stamp.like/.nope/.maybe children). onCommit(dir)
+   fires once a drag crosses the commit threshold; everything else
+   (snap-back, stamp opacity while dragging) lives in here. */
 function attachDrag(card, onCommit) {
   let startX = 0, startY = 0, dx = 0, dy = 0, dragging = false, pointerId = null;
   const COMMIT = 95;     // px to commit a swipe decision
@@ -1659,43 +1545,6 @@ function flyOut(card, dir) {
         state.toastMsg = pickToast(dir);
       }
       renderDeck();
-    }
-  }, 320);
-}
-
-/* Quiz option cards: same fly-out animation as flyOut(), but the commit
-   action picks/cycles/skips a quiz question instead of swiping a movie. */
-let optFlying = false;
-function flyOutOption(card, dir, q) {
-  if (optFlying) return;           // guard against double-trigger
-  optFlying = true;
-
-  card.style.transition = 'transform 0.35s ease, opacity 0.35s ease';
-  let x = 0, y = 40, rot = 0;
-  if (dir === 'right') { x = window.innerWidth; rot = 22; }
-  else if (dir === 'left') { x = -window.innerWidth; rot = -22; }
-  else { y = -window.innerHeight; rot = 0; }
-  card.style.transform = `translate(${x}px, ${y}px) rotate(${rot}deg)`;
-  card.style.opacity = '0';
-  const stamp = dir === 'right' ? card.querySelector('.stamp.like')
-    : dir === 'up' ? card.querySelector('.stamp.maybe')
-    : card.querySelector('.stamp.nope');
-  stamp.style.opacity = 1;
-
-  setTimeout(function () {
-    optFlying = false;
-    if (dir === 'right') {
-      // picked this option
-      state.answers[q.key] = q.opts[state.optIndex].v;
-      goNext();
-    } else if (dir === 'up') {
-      // skip the whole question — same as the "Skip" link
-      delete state.answers[q.key];
-      goNext();
-    } else {
-      // cycle to the next option in this question
-      state.optIndex = (state.optIndex + 1) % q.opts.length;
-      renderQuestion();
     }
   }, 320);
 }
