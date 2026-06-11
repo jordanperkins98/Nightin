@@ -22,6 +22,7 @@
     --cream-dim: #f0ead6a6;
     --like: #2ecc71;
     --nope: #e74c3c;
+    --maybe: #f1c40f;
     --skeleton: #1a1a1a;
     --card-radius: 22px;
     --maxw: 460px;
@@ -206,9 +207,11 @@
     box-shadow: inset 0 0 0 1px var(--accent);
   }
 
-  .quiz-foot { margin-top: auto; padding-top: 18px; display: flex; gap: 12px; align-items: center; }
-  .quiz-foot .btn { flex: 1; }
-  .quiz-foot .back { width: 52px; flex: none; }
+  .quiz-foot { margin-top: auto; padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .quiz-foot-row { display: flex; gap: 12px; align-items: center; }
+  .quiz-foot-row .btn { flex: 1; }
+  .quiz-foot-row .back { width: 52px; flex: none; }
+  .quiz-foot .skip { align-self: center; }
 
   /* ===================== Loading ===================== */
   .loader-wrap { margin: auto; text-align: center; }
@@ -342,6 +345,20 @@
   .avail.on { background: #1f7a45e6; color: #d6ffe6; border: 1px solid #2ecc7155; }
   .avail.dl { background: #15151acc; color: var(--cream-dim); border: 1px solid #ffffff26; }
 
+  /* streaming-source badges (top-left of card) */
+  .stream-badges { position: absolute; top: 14px; left: 14px; z-index: 2; display: flex; gap: 6px; flex-wrap: wrap; max-width: 60%; }
+  .stream-badge {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.3px; color: #fff;
+    padding: 5px 10px; border-radius: 99px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 4px 14px -4px #000;
+  }
+  .stream-badge.netflix { background: #e5091466; border: 1px solid #e50914; }
+  .stream-badge.prime { background: #00a8e166; border: 1px solid #00a8e1; }
+
+  /* runtime badge in the card meta row */
+  .card .meta .runtime { color: var(--cream-dim); }
+
   /* match-screen server status + button states */
   .server-status { font-size: 13.5px; margin: 12px 0 2px; font-weight: 600; }
   .server-status.on { color: #4cd787; }
@@ -416,6 +433,7 @@
   }
   .card .stamp.like { left: 20px; color: var(--like); border-color: var(--like); transform: rotate(-16deg); }
   .card .stamp.nope { right: 20px; color: var(--nope); border-color: var(--nope); transform: rotate(16deg); }
+  .card .stamp.maybe { left: 50%; color: var(--maybe); border-color: var(--maybe); transform: translateX(-50%); }
 
   .deck-controls {
     display: flex;
@@ -434,6 +452,7 @@
   .round-btn:active { transform: scale(0.9); }
   .round-btn.no { color: var(--nope); }
   .round-btn.yes { color: var(--like); }
+  .round-btn.maybe { font-size: 24px; color: var(--maybe); width: 52px; height: 52px; align-self: center; }
   .round-btn.info { font-size: 22px; color: var(--cream-dim); width: 48px; height: 48px; align-self: center; }
 
   /* ===================== Pass the phone ===================== */
@@ -646,6 +665,7 @@ const state = {
   deck: [],           // normalized title objects (from server)
   player: 1,          // solo: whose turn to swipe; duo: this device's player #
   likes: { 1: new Set(), 2: new Set() },
+  maybes: { 1: new Set(), 2: new Set() },
   swipeIndex: 0,
 
   // duo / networking
@@ -937,10 +957,13 @@ function renderQuestion() {
       <div class="options ${q.grid ? 'grid2' : ''}">${optsHtml}</div>
 
       <div class="quiz-foot">
-        ${state.qIndex > 0 ? '<button class="btn btn-ghost back">‹</button>' : ''}
-        <button class="btn next" ${canNext ? '' : 'disabled'}>
-          ${state.qIndex === total - 1 ? 'See picks →' : 'Next'}
-        </button>
+        <div class="quiz-foot-row">
+          ${state.qIndex > 0 ? '<button class="btn btn-ghost back">‹</button>' : ''}
+          <button class="btn next" ${canNext ? '' : 'disabled'}>
+            ${state.qIndex === total - 1 ? 'See picks →' : 'Next'}
+          </button>
+        </div>
+        <button class="link skip">🤷 Skip — I don't know</button>
       </div>
     </div>
   `);
@@ -977,6 +1000,10 @@ function renderQuestion() {
     state.qIndex--; renderQuestion();
   };
   nextBtn.onclick = goNext;
+  s.querySelector('.skip').onclick = function () {
+    delete state.answers[q.key];
+    goNext();
+  };
 }
 
 function goNext() {
@@ -1017,21 +1044,52 @@ async function apiTrailer(title) {
   } catch (e) { return null; }
 }
 
-/* Rotten Tomatoes score — fills a hidden .rt-badge span once the server
-   answers (no-op when OMDb isn't configured / no score exists). */
-const rtScores = new Map();   // title.id -> '85%' | null
+/* Per-title extras — runtime, streaming providers, Rotten Tomatoes score —
+   fetched once per title and cached (no-op fields are simply absent). */
+const extrasCache = new Map();   // title.id -> { rt, imdb, runtime, providers } | Promise
+function fetchExtras(t) {
+  if (!extrasCache.has(t.id)) {
+    const p = fetch(API_BASE + '/api/extras?type=' + t.type + '&id=' + t.tmdbId)
+      .then(function (res) { return res.json(); })
+      .catch(function () { return {}; })
+      .then(function (data) { extrasCache.set(t.id, data); return data; });
+    extrasCache.set(t.id, p);
+  }
+  return Promise.resolve(extrasCache.get(t.id));
+}
+
+/* Rotten Tomatoes score — fills a hidden .rt-badge span (no-op when OMDb
+   isn't configured / no score exists). */
 async function loadRT(span, t) {
   if (!span) return;
-  const apply = function (rt) {
-    if (rt && span.isConnected) { span.textContent = '🍅 ' + rt; span.style.display = ''; }
-  };
-  if (rtScores.has(t.id)) { apply(rtScores.get(t.id)); return; }
-  try {
-    const res = await fetch(API_BASE + '/api/ratings?type=' + t.type + '&id=' + t.tmdbId);
-    const data = await res.json();
-    rtScores.set(t.id, data.rt || null);
-    apply(data.rt);
-  } catch (e) {}
+  const data = await fetchExtras(t);
+  if (data.rt && span.isConnected) { span.textContent = '🍅 ' + data.rt; span.style.display = ''; }
+}
+
+/* swipe-card extras: RT score, runtime, and streaming-source badges */
+function formatRuntime(mins) {
+  const h = Math.floor(mins / 60), m = mins % 60;
+  if (h && m) return h + 'h ' + m + 'm';
+  if (h) return h + 'h';
+  return m + 'm';
+}
+async function loadCardExtras(card, t) {
+  const data = await fetchExtras(t);
+  if (!card.isConnected) return;
+  const rtSpan = card.querySelector('.rt-badge');
+  if (data.rt && rtSpan) { rtSpan.textContent = '🍅 ' + data.rt; rtSpan.style.display = ''; }
+  const runtimeSpan = card.querySelector('.runtime');
+  if (data.runtime && runtimeSpan) {
+    runtimeSpan.textContent = '⏱ ' + formatRuntime(data.runtime) + (t.type === 'tv' ? '/ep' : '');
+    runtimeSpan.style.display = '';
+  }
+  const badges = card.querySelector('.stream-badges');
+  if (badges && data.providers) {
+    let html = '';
+    if (data.providers.netflix) html += '<span class="stream-badge netflix">Netflix</span>';
+    if (data.providers.prime) html += '<span class="stream-badge prime">Prime Video</span>';
+    badges.innerHTML = html;
+  }
 }
 
 /* SOLO / pass-and-play: this device fetches the deck for one answer set */
@@ -1131,6 +1189,7 @@ function renderError(msg) {
 function startSwipeSession() {
   state.player = 1;
   state.likes = { 1: new Set(), 2: new Set() };
+  state.maybes = { 1: new Set(), 2: new Set() };
   state.swipeIndex = 0;
   renderDeck();
 }
@@ -1138,6 +1197,7 @@ function startSwipeSession() {
 /* DUO: this device swipes the shared deck once as its assigned player */
 function startDuoSwipe() {
   state.likes[state.player] = new Set();
+  state.maybes[state.player] = new Set();
   state.swipeIndex = 0;
   renderDeck();
 }
@@ -1186,7 +1246,8 @@ function renderDeck() {
       </div>
       <div class="deck" id="deck"></div>
       <div class="deck-controls">
-        <button class="round-btn no" id="btn-no" aria-label="Skip">✗</button>
+        <button class="round-btn no" id="btn-no" aria-label="No">✗</button>
+        <button class="round-btn maybe" id="btn-maybe" aria-label="Maybe">🤔</button>
         <button class="round-btn info" id="btn-info" aria-label="Details">ℹ︎</button>
         <button class="round-btn yes" id="btn-yes" aria-label="Like">♥</button>
       </div>
@@ -1208,6 +1269,7 @@ function renderDeck() {
   if (topCard) {
     attachDrag(topCard);
     s.querySelector('#btn-no').onclick = function () { flyOut(topCard, 'left'); };
+    s.querySelector('#btn-maybe').onclick = function () { flyOut(topCard, 'up'); };
     s.querySelector('#btn-yes').onclick = function () { flyOut(topCard, 'right'); };
     s.querySelector('#btn-info').onclick = function () { topCard.classList.toggle('show-ov'); };
     preloadNext();
@@ -1230,6 +1292,7 @@ function buildCard(t, depth) {
         <div class="fmeta">${badgeText(t)} · ${yearOf(t)}</div>
       </div>
       ${availPill(t)}
+      <div class="stream-badges"></div>
       <div class="gradient"></div>
       <div class="info">
         <span class="badge">${badgeText(t)}</span>
@@ -1237,12 +1300,14 @@ function buildCard(t, depth) {
         <div class="meta">
           <span>${yearOf(t)}</span>
           ${t.vote ? `<span class="star">★ ${t.vote}</span>` : ''}
+          <span class="runtime" style="display:none"></span>
           <span class="rt-badge" style="display:none"></span>
         </div>
         <div class="ov">${esc(t.overview)}</div>
       </div>
       <div class="stamp like">LIKE</div>
       <div class="stamp nope">NOPE</div>
+      <div class="stamp maybe">MAYBE</div>
     </div>
   `);
 
@@ -1261,7 +1326,7 @@ function buildCard(t, depth) {
     };
     img.src = poster500(t);
   }
-  loadRT(card.querySelector('.rt-badge'), t);
+  loadCardExtras(card, t);
   return card;
 }
 
@@ -1284,6 +1349,7 @@ function attachDrag(card) {
   const COMMIT = 95;     // px to commit a swipe decision
   const likeStamp = card.querySelector('.stamp.like');
   const nopeStamp = card.querySelector('.stamp.nope');
+  const maybeStamp = card.querySelector('.stamp.maybe');
 
   function down(x, y, id) {
     dragging = true; startX = x; startY = y; dx = 0; dy = 0; pointerId = id;
@@ -1294,21 +1360,33 @@ function attachDrag(card) {
     dx = x - startX; dy = y - startY;
     const rot = dx / 18;                       // tilt proportional to drag
     card.style.transform = `translate(${dx}px, ${dy}px) rotate(${rot}deg)`;
-    const intent = Math.min(Math.abs(dx) / COMMIT, 1);
-    likeStamp.style.opacity = dx > 0 ? intent : 0;
-    nopeStamp.style.opacity = dx < 0 ? intent : 0;
+    const vertical = dy < 0 && Math.abs(dy) > Math.abs(dx);
+    if (vertical) {
+      maybeStamp.style.opacity = Math.min(Math.abs(dy) / COMMIT, 1);
+      likeStamp.style.opacity = 0;
+      nopeStamp.style.opacity = 0;
+    } else {
+      const intent = Math.min(Math.abs(dx) / COMMIT, 1);
+      likeStamp.style.opacity = dx > 0 ? intent : 0;
+      nopeStamp.style.opacity = dx < 0 ? intent : 0;
+      maybeStamp.style.opacity = 0;
+    }
   }
   function up() {
     if (!dragging) return;
     dragging = false;
     card.style.transition = 'transform 0.35s cubic-bezier(.2,.7,.3,1), opacity 0.35s';
-    if (Math.abs(dx) > COMMIT) {
+    const vertical = dy < 0 && Math.abs(dy) > Math.abs(dx);
+    if (vertical && Math.abs(dy) > COMMIT) {
+      flyOut(card, 'up');
+    } else if (!vertical && Math.abs(dx) > COMMIT) {
       flyOut(card, dx > 0 ? 'right' : 'left');
     } else {
       // snap back
       card.style.transform = 'translateY(0) scale(1)';
       likeStamp.style.opacity = 0;
       nopeStamp.style.opacity = 0;
+      maybeStamp.style.opacity = 0;
     }
   }
 
@@ -1342,16 +1420,21 @@ let flying = false;
 function flyOut(card, dir) {
   if (flying) return;            // guard against double-trigger
   flying = true;
-  const liked = dir === 'right';
   const t = state.deck[state.swipeIndex];
-  if (liked) state.likes[state.player].add(t.id);
+  if (dir === 'right') state.likes[state.player].add(t.id);
+  else if (dir === 'up') state.maybes[state.player].add(t.id);
 
   card.style.transition = 'transform 0.4s ease, opacity 0.4s ease';
-  const x = dir === 'right' ? window.innerWidth : -window.innerWidth;
-  const rot = dir === 'right' ? 22 : -22;
-  card.style.transform = `translate(${x}px, 40px) rotate(${rot}deg)`;
+  let x = 0, y = 40, rot = 0;
+  if (dir === 'right') { x = window.innerWidth; rot = 22; }
+  else if (dir === 'left') { x = -window.innerWidth; rot = -22; }
+  else { y = -window.innerHeight; rot = 0; }
+  card.style.transform = `translate(${x}px, ${y}px) rotate(${rot}deg)`;
   card.style.opacity = '0';
-  (dir === 'right' ? card.querySelector('.stamp.like') : card.querySelector('.stamp.nope')).style.opacity = 1;
+  const stamp = dir === 'right' ? card.querySelector('.stamp.like')
+    : dir === 'up' ? card.querySelector('.stamp.maybe')
+    : card.querySelector('.stamp.nope');
+  stamp.style.opacity = 1;
 
   setTimeout(function () {
     flying = false;
@@ -1366,8 +1449,12 @@ function flyOut(card, dir) {
 
 function onPlayerFinished() {
   if (state.mode === 'duo') {
-    // report my likes; the server reveals matches once both phones are done
-    wsSend({ t: 'done', likes: Array.from(state.likes[state.player]) });
+    // report my likes/maybes; the server reveals matches once both phones are done
+    wsSend({
+      t: 'done',
+      likes: Array.from(state.likes[state.player]),
+      maybes: Array.from(state.maybes[state.player])
+    });
     renderWaiting('Waiting for your partner to finish swiping…');
     return;
   }
@@ -1385,6 +1472,7 @@ function onPlayerFinished() {
 function renderResult(m) {
   if (m.kind === 'single') renderSingleMatch(m.matches[0]);
   else if (m.kind === 'multi') renderMultiMatch(m.matches);
+  else if (m.kind === 'maybe') renderMultiMatch(m.matches, true);
   else renderNoMatch(m.miss || null);
 }
 
@@ -1417,8 +1505,22 @@ function computeMatches() {
 
   if (matches.length === 1) {
     renderSingleMatch(matches[0]);
+    return;
   } else if (matches.length > 1) {
     renderMultiMatch(matches);
+    return;
+  }
+
+  // no double-yes — fall back to a softer "maybe match": both players were
+  // at least lukewarm (yes-or-maybe) on the same title
+  const m1 = state.maybes[1], m2 = state.maybes[2];
+  const maybeMatches = state.deck.filter(function (t) {
+    const inA = p1.has(t.id) || m1.has(t.id);
+    const inB = p2.has(t.id) || m2.has(t.id);
+    return inA && inB;
+  });
+  if (maybeMatches.length) {
+    renderMultiMatch(maybeMatches, true);
   } else {
     renderNoMatch();
   }
@@ -1514,7 +1616,7 @@ async function wireTrailer(anchor, t) {
 /* ====================================================================
    SCREEN: Multiple matches (chooser)
    ==================================================================== */
-function renderMultiMatch(matches) {
+function renderMultiMatch(matches, isMaybe) {
   clearApp();
   const items = matches.map(function (t) {
     const thumb = posterThumb(t);
@@ -1529,12 +1631,20 @@ function renderMultiMatch(matches) {
             </div>`;
   }).join('');
 
+  const eyebrow = isMaybe ? 'No perfect match' : matches.length + ' Matches!';
+  const heading = isMaybe
+    ? (matches.length === 1 ? 'But maybe this?' : 'But maybe one of these?')
+    : 'You both liked these';
+  const sub = isMaybe
+    ? 'Nobody said yes to the same thing — but at least one of you said "maybe" to these.'
+    : 'Tap ▶ to watch a trailer, tap a card to pick it.';
+
   const s = el(`
     <div class="screen active">
       <div style="text-align:center;margin:6px 0 4px">
-        <div style="font-size:13px;letter-spacing:2px;color:var(--accent);font-weight:700;text-transform:uppercase">${matches.length} Matches!</div>
-        <h2 style="font-size:28px;margin:6px 0 2px">You both liked these</h2>
-        <p style="color:var(--cream-dim);font-size:14px;margin:0 0 4px">Tap ▶ to watch a trailer, tap a card to pick it.</p>
+        <div style="font-size:13px;letter-spacing:2px;color:var(--accent);font-weight:700;text-transform:uppercase">${esc(eyebrow)}</div>
+        <h2 style="font-size:28px;margin:6px 0 2px">${esc(heading)}</h2>
+        <p style="color:var(--cream-dim);font-size:14px;margin:0 0 4px">${esc(sub)}</p>
       </div>
       <div class="chooser-list" style="overflow-y:auto;flex:1;padding:4px 2px">${items}</div>
       <button class="btn btn-ghost" id="again" style="margin-top:12px">${state.mode === 'duo' ? '🔁 Pick again' : 'Start over'}</button>
@@ -1542,7 +1652,7 @@ function renderMultiMatch(matches) {
   `);
   app.appendChild(s);
   wireThumbFallbacks(s);
-  fireConfetti();
+  if (!isMaybe) fireConfetti();
   s.querySelectorAll('.choose-item').forEach(function (item) {
     const id = item.getAttribute('data-id');
     const t = matches.find(function (m) { return m.id === id; }) || idToTitle(id);
@@ -1570,7 +1680,8 @@ function renderNoMatch(serverMiss) {
   let miss = serverMiss;
   if (miss === undefined) {
     const likedByEither = state.deck.filter(function (t) {
-      return state.likes[1].has(t.id) || state.likes[2].has(t.id);
+      return state.likes[1].has(t.id) || state.likes[2].has(t.id) ||
+        state.maybes[1].has(t.id) || state.maybes[2].has(t.id);
     });
     likedByEither.sort(function (a, b) { return (b.vote || 0) - (a.vote || 0); });
     miss = likedByEither[0] || null;

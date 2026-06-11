@@ -34,11 +34,11 @@ const TV_GENRES = {
 };
 const VIBE_MAP = {
   Chill:   { add: ['Comedy', 'Romance', 'Family'],     sort: 'vote_average.desc', minVotes: 400 },
-  Laugh:   { add: ['Comedy'],                          sort: 'popularity.desc',   minVotes: 100 },
-  Cry:     { add: ['Drama', 'Romance'],                sort: 'popularity.desc',   minVotes: 150 },
-  Thrills: { add: ['Thriller', 'Horror', 'Action'],    sort: 'popularity.desc',   minVotes: 150 },
+  Laugh:   { add: ['Comedy'],                          sort: 'vote_average.desc', minVotes: 100 },
+  Cry:     { add: ['Drama', 'Romance'],                sort: 'vote_average.desc', minVotes: 150 },
+  Thrills: { add: ['Thriller', 'Horror', 'Action'],    sort: 'vote_average.desc', minVotes: 150 },
   Think:   { add: ['Drama', 'Mystery', 'Documentary'], sort: 'vote_average.desc', minVotes: 350 },
-  Any:     { add: [],                                  sort: 'popularity.desc',   minVotes: 150 }
+  Any:     { add: [],                                  sort: 'vote_average.desc', minVotes: 150 }
 };
 const PROVIDERS = { Netflix: 8, 'Prime': 9 };
 const REGION = process.env.TMDB_REGION || 'US';
@@ -55,10 +55,10 @@ function computeSpec(list) {
 
   list.forEach(function (a) {
     (a.genres || []).forEach(function (g) { genres.add(g); });
-    const v = VIBE_MAP[a.vibe] || VIBE_MAP.Chill;
+    const v = VIBE_MAP[a.vibe] || VIBE_MAP.Any;
     v.add.forEach(function (g) { added.add(g); });
     if (a.length === 'series') formats.add('tv');
-    else if (a.length === 'any') { formats.add('movie'); formats.add('tv'); }
+    else if (a.length === 'any' || !a.length) { formats.add('movie'); formats.add('tv'); }
     else formats.add('movie');
     if (a.length === 'short') runtimeLte = 90;
     else if (a.energy === 'zombie' && runtimeLte == null) runtimeLte = 115;
@@ -67,9 +67,9 @@ function computeSpec(list) {
   });
 
   // sort/vote-floor: use the shared vibe when both agree (or solo); else neutral
-  let sort = 'popularity.desc', minVotes = 150;
+  let sort = 'vote_average.desc', minVotes = 150;
   if (list.length === 1 || list[0].vibe === list[1].vibe) {
-    const v = VIBE_MAP[list[0].vibe] || VIBE_MAP.Chill;
+    const v = VIBE_MAP[list[0].vibe] || VIBE_MAP.Any;
     sort = v.sort; minVotes = v.minVotes;
   }
 
@@ -456,27 +456,40 @@ async function addSeries(tmdbId, title) {
 }
 
 /* =========================================================================
-   Rotten Tomatoes (via OMDb) — optional, needs OMDB_API_KEY
-   TMDB id → imdb id → OMDb ratings. Cached forever (scores barely move).
+   Per-title extras: runtime, streaming providers, and (optional) Rotten
+   Tomatoes/IMDb scores via OMDb. One combined TMDB call (append_to_response)
+   plus an optional OMDb call. Cached forever — none of this changes often.
    ========================================================================= */
 const OMDB_KEY = process.env.OMDB_API_KEY || '';
-const ratingsCache = new Map();   // 'movie-123' -> { rt, imdb }
+const extrasCache = new Map();   // 'movie-123' -> { rt, imdb, runtime, providers }
 
-async function fetchRatings(type, tmdbId) {
+async function fetchExtras(type, tmdbId) {
   const ck = type + '-' + tmdbId;
-  if (ratingsCache.has(ck)) return ratingsCache.get(ck);
-  const out = { rt: null, imdb: null };
-  if (!OMDB_KEY || !tmdbId) return out;
+  if (extrasCache.has(ck)) return extrasCache.get(ck);
+  const out = { rt: null, imdb: null, runtime: null, providers: { netflix: false, prime: false } };
+  if (!tmdbId) return out;
   try {
-    const ext = await (await fetch(TMDB_BASE + '/' + type + '/' + tmdbId + '/external_ids?api_key=' + API_KEY)).json();
-    const imdbId = ext && ext.imdb_id;
-    if (imdbId) {
-      const data = await (await fetch('https://www.omdbapi.com/?apikey=' + OMDB_KEY + '&i=' + imdbId)).json();
-      const rt = (data.Ratings || []).find(function (r) { return r.Source === 'Rotten Tomatoes'; });
+    const data = await (await fetch(TMDB_BASE + '/' + type + '/' + tmdbId +
+      '?api_key=' + API_KEY + '&append_to_response=external_ids,watch/providers')).json();
+
+    out.runtime = type === 'movie'
+      ? (data.runtime || null)
+      : (data.episode_run_time && data.episode_run_time[0]) || null;
+
+    const region = (data['watch/providers'] && data['watch/providers'].results &&
+      data['watch/providers'].results[REGION]) || {};
+    const offers = [].concat(region.flatrate || [], region.ads || [], region.free || []);
+    out.providers.netflix = offers.some(function (p) { return p.provider_id === PROVIDERS.Netflix; });
+    out.providers.prime = offers.some(function (p) { return p.provider_id === PROVIDERS.Prime; });
+
+    const imdbId = data.external_ids && data.external_ids.imdb_id;
+    if (OMDB_KEY && imdbId) {
+      const omdb = await (await fetch('https://www.omdbapi.com/?apikey=' + OMDB_KEY + '&i=' + imdbId)).json();
+      const rt = (omdb.Ratings || []).find(function (r) { return r.Source === 'Rotten Tomatoes'; });
       out.rt = rt ? rt.Value : null;
-      out.imdb = data.imdbRating && data.imdbRating !== 'N/A' ? data.imdbRating : null;
+      out.imdb = omdb.imdbRating && omdb.imdbRating !== 'N/A' ? omdb.imdbRating : null;
     }
-    ratingsCache.set(ck, out);
+    extrasCache.set(ck, out);
   } catch (e) {}
   return out;
 }
@@ -561,11 +574,11 @@ const server = http.createServer(async function (req, res) {
     return sendJson(res, 200, { url: trailerUrl });
   }
 
-  // --- API: Rotten Tomatoes / IMDb ratings (needs OMDB_API_KEY) ---
-  if (url.pathname === '/api/ratings' && req.method === 'GET') {
+  // --- API: per-title extras — runtime, streaming providers, RT/IMDb ---
+  if (url.pathname === '/api/extras' && req.method === 'GET') {
     const type = url.searchParams.get('type') === 'tv' ? 'tv' : 'movie';
     const id = Number(url.searchParams.get('id'));
-    const r = await fetchRatings(type, id);
+    const r = await fetchExtras(type, id);
     return sendJson(res, 200, r);
   }
 
@@ -628,6 +641,7 @@ function newRoom(code) {
     sockets: { 1: null, 2: null },
     answers: { 1: null, 2: null },
     likes: { 1: new Set(), 2: new Set() },
+    maybes: { 1: new Set(), 2: new Set() },
     done: { 1: false, 2: false },
     deck: [],
     deckById: {},
@@ -666,19 +680,36 @@ function setDeck(room, titles) {
   room.deckById = {};
   titles.forEach(function (t) { room.deckById[t.id] = t; });
   room.likes = { 1: new Set(), 2: new Set() };
+  room.maybes = { 1: new Set(), 2: new Set() };
   room.done = { 1: false, 2: false };
 }
 
 function maybeResult(room) {
   if (!room.done[1] || !room.done[2]) return;
   const a = room.likes[1], b = room.likes[2];
+  const ma = room.maybes[1], mb = room.maybes[2];
   const matchIds = Array.from(a).filter(function (id) { return b.has(id); });
   const matches = matchIds.map(function (id) { return room.deckById[id]; }).filter(Boolean);
 
   if (matches.length) {
     broadcast(room, { t: 'result', kind: matches.length === 1 ? 'single' : 'multi', matches: matches });
+    return;
+  }
+
+  // no double-yes — fall back to a softer "maybe match": both players were
+  // at least lukewarm (yes-or-maybe) on the same title
+  const maybeMatches = room.deck.filter(function (t) {
+    const inA = a.has(t.id) || ma.has(t.id);
+    const inB = b.has(t.id) || mb.has(t.id);
+    return inA && inB;
+  });
+
+  if (maybeMatches.length) {
+    broadcast(room, { t: 'result', kind: 'maybe', matches: maybeMatches });
   } else {
-    const either = room.deck.filter(function (t) { return a.has(t.id) || b.has(t.id); });
+    const either = room.deck.filter(function (t) {
+      return a.has(t.id) || b.has(t.id) || ma.has(t.id) || mb.has(t.id);
+    });
     either.sort(function (x, y) { return (y.vote || 0) - (x.vote || 0); });
     broadcast(room, { t: 'result', kind: 'none', miss: either[0] || null });
   }
@@ -737,6 +768,7 @@ wss.on('connection', function (ws) {
 
     if (m.t === 'done') {
       (m.likes || []).forEach(function (id) { room.likes[ws.player].add(id); });
+      (m.maybes || []).forEach(function (id) { room.maybes[ws.player].add(id); });
       room.done[ws.player] = true;
       send(peerOf(room, ws.player), { t: 'peer-done' });
       maybeResult(room);
