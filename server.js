@@ -108,7 +108,7 @@ function buildParams(spec, type, relax) {
     else if (spec.era === 'modern')  { dateGte = '2000-01-01'; dateLte = '2019-12-31'; }
     else if (spec.era === 'latest')  { dateGte = '2022-01-01'; }
   }
-  const minVotes = relax >= 1 ? 50 : spec.minVotes;
+  const minVotes = relax >= 1 ? 100 : spec.minVotes;
 
   const p = new URLSearchParams();
   p.set('api_key', API_KEY);
